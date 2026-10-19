@@ -5,22 +5,34 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      scene:
+        description: '场景文件'
+        required: false
+        default: 'scenes/cubist.html'
+      name:
+        description: '输出文件名（不含扩展名）'
+        required: false
+        default: 'cubist'
       seconds:
         description: '时长（秒）'
         required: false
-        default: '2'
+        default: '12'
       width:
         description: '宽'
         required: false
-        default: '640'
+        default: '540'
       height:
         description: '高'
         required: false
-        default: '360'
+        default: '960'
       fps:
         description: '帧率'
         required: false
         default: '24'
+      seed:
+        description: '随机种子'
+        required: false
+        default: '20261019'
 
 permissions:
   contents: write
@@ -28,6 +40,15 @@ permissions:
 concurrency:
   group: render-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  SCENE: ${{ github.event.inputs.scene || 'scenes/cubist.html' }}
+  NAME: ${{ github.event.inputs.name || 'cubist' }}
+  SECONDS: ${{ github.event.inputs.seconds || '12' }}
+  W: ${{ github.event.inputs.width || '540' }}
+  H: ${{ github.event.inputs.height || '960' }}
+  FPS: ${{ github.event.inputs.fps || '24' }}
+  SEED: ${{ github.event.inputs.seed || '20261019' }}
 
 jobs:
   render:
@@ -44,11 +65,6 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Render frames
-        env:
-          W: ${{ github.event.inputs.width || '640' }}
-          H: ${{ github.event.inputs.height || '360' }}
-          FPS: ${{ github.event.inputs.fps || '24' }}
-          SECONDS: ${{ github.event.inputs.seconds || '2' }}
         run: node scripts/render.mjs
 
       - name: Encode video
@@ -57,25 +73,26 @@ jobs:
           sudo apt-get install -y -qq ffmpeg
           mkdir -p out
           ffmpeg -y -hide_banner -loglevel error \
-            -framerate 24 -i frames/%04d.png \
+            -framerate ${FPS} -i frames/%04d.png \
             -c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p \
-            out/smoke.mp4
+            -movflags +faststart \
+            out/${NAME}.mp4
           ls -lh out
 
       - name: Keep as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: smoke-mp4
-          path: out/smoke.mp4
+          name: video
+          path: out/${{ env.NAME }}.mp4
           if-no-files-found: error
 
       - name: Commit result back to repo
         run: |
           mkdir -p renders
-          cp out/smoke.mp4 renders/smoke.mp4
+          cp out/${NAME}.mp4 renders/${NAME}.mp4
           rm -rf frames
           git config user.name "codefilm-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add renders
-          git commit -m "render: smoke.mp4 [skip ci]" || echo "nothing to commit"
+          git commit -m "render: ${NAME}.mp4 [skip ci]" || echo "nothing to commit"
           git push

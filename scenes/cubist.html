@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>cubist tetris</title>
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#ded0ae}
+canvas{display:block}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function(){
+'use strict';
+
+/* ================= 基础 ================= */
+var DW=540, DH=960;
+var COLS=10, ROWS=20, CS=30, FX=120, FY=150;
+
+var cv=document.getElementById('c');
+var ctx=cv.getContext('2d');
+var W=DW,H=DH,S=1,OX=0,OY=0;
+
+var PAL=['#c08a3e','#7d8b4a','#a9615a','#48686a','#9c5f38','#7d6394','#c8a552'];
+var PAL_L=PAL.map(function(c){return lighten(c,0.20);});
+var INK='#211a15';
+var PAPER='#ded0ae';
+var SERIF='"DejaVu Serif", Georgia, "Times New Roman", serif';
+
+function mulberry32(a){
+  return function(){
+    a|=0; a=a+0x6D2B79F5|0;
+    var t=Math.imul(a^a>>>15,1|a);
+    t=t+Math.imul(t^t>>>7,61|t)^t;
+    return ((t^t>>>14)>>>0)/4294967296;
+  };
+}
+function hash2(x,y,s){
+  var h=(x*374761393+y*668265263+(s||0)*1274126177)|0;
+  h=Math.imul(h^(h>>>13),1274126177);
+  return ((h^(h>>>16))>>>0)/4294967296;
+}
+function lighten(hex,k){
+  var r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+  return 'rgb('+Math.round(r+(255-r)*k)+','+Math.round(g+(255-g)*k)+','+Math.round(b+(255-b)*k)+')';
+}
+
+/* ================= 手绘线 ================= */
+function wline(g,x1,y1,x2,y2,col,w,j,rnd){
+  var len=Math.sqrt((x2-x1)*(x2-x1)+(y2-y1)*(y2-y1));
+  var n=Math.max(1,Math.round(len/26));
+  g.beginPath();
+  for(var i=0;i<=n;i++){
+    var u=i/n;
+    var ox=(i>0&&i<n)?(rnd()-0.5)*j:0;
+    var oy=(i>0&&i<n)?(rnd()-0.5)*j:0;
+    var x=x1+(x2-x1)*u+ox, y=y1+(y2-y1)*u+oy;
+    if(i===0)g.moveTo(x,y); else g.lineTo(x,y);
+  }
+  g.strokeStyle=col; g.lineWidth=w; g.lineCap='round'; g.lineJoin='round';
+  g.stroke();
+}
+function wrect(g,x,y,w,h,col,lw,rnd,j){
+  wline(g,x,y,x+w,y,col,lw,j,rnd);
+  wline(g,x+w,y,x+w,y+h,col,lw,j,rnd);
+  wline(g,x+w,y+h,x,y+h,col,lw,j,rnd);
+  wline(g,x,y+h,x,y,col,lw,j,rnd);
+}
+function slab(g,rnd,x,y,w,h,deg,col,alpha){
+  g.save();
+  g.translate(x+w/2,y+h/2);
+  g.rotate(deg*Math.PI/180);
+  g.globalAlpha=alpha;
+  g.fillStyle=col;
+  g.fillRect(-w/2,-h/2,w,h);
+  g.globalAlpha=Math.min(1,alpha+0.15);
+  wrect(g,-w/2,-h/2,w,h,INK,1.6,rnd,3);
+  g.restore();
+}
+
+/* ================= 静态背景 ================= */
+var BG=null;
+function buildBG(){
+  var bc=document.createElement('canvas');
+  bc.width=DW; bc.height=DH;
+  var g=bc.getContext('2d');
+  var rnd=mulberry32(77123);
+
+  /* 纸底 */
+  var grd=g.createLinearGradient(0,0,DW,DH);
+  grd.addColorStop(0,'#e6d9bb');
+  grd.addColorStop(0.45,'#ddd0af');
+  grd.addColorStop(1,'#cfbf9c');
+  g.fillStyle=grd; g.fillRect(0,0,DW,DH);
+
+  /* 拼贴色块 */
+  slab(g,rnd,-50,-30,260,320,-7,'#b98f45',0.5);
+  slab(g,rnd,320,-40,260,250,6,'#77854a',0.42);
+  slab(g,rnd,300,560,290,330,-4,'#a4645b',0.40);
+  slab(g,rnd,-60,700,230,270,7,'#4f6b6b',0.35);
+  slab(g,rnd,110,845,300,140,-2,'#8f7fa6',0.22);
+  slab(g,rnd,395,300,170,150,3,'#c9a24e',0.35);
+
+  /* 半调网点 */
+  g.save();
+  g.globalAlpha=0.20;
+  g.fillStyle=INK;
+  for(var yy=180;yy<420;yy+=9){
+    for(var xx=28;xx<150;xx+=9){
+      var d=(xx-28)/122, e=(yy-180)/240;
+      var r=1.9*(1-d)*(1-e*0.4);
+      if(r>0.35){ g.beginPath(); g.arc(xx,yy,r,0,6.284); g.fill(); }
+    }
+  }
+  g.restore();
+
+  /* 五线谱 */
+  g.save(); g.globalAlpha=0.55;
+  for(var i=0;i<5;i++){
+    wline(g,196,806+i*11,505,804+i*11,'#3a322a',1.1,2.4,rnd);
+  }
+  g.restore();
+
+  /* 吉他 */
+  g.save();
+  g.translate(482,700); g.rotate(0.10);
+  g.fillStyle='#8a6b45';
+  g.fillRect(-8,-215,16,160);
+  g.strokeStyle=INK; g.lineWidth=2.6; g.strokeRect(-8,-215,16,160);
+  g.fillStyle='#5e472c';
+  g.fillRect(-11,-228,22,16);
+  g.strokeRect(-11,-228,22,16);
+  for(var s2=0;s2<4;s2++){
+    wline(g,-5+s2*3.2,-210,-5+s2*3.2,-58,'rgba(35,28,22,0.55)',1.1,2,rnd);
+  }
+  g.beginPath(); g.ellipse(0,15,55,63,0,0,6.284);
+  g.fillStyle='#a9615a'; g.fill();
+  g.strokeStyle=INK; g.lineWidth=3.6; g.stroke();
+  g.beginPath(); g.ellipse(0,100,45,50,0,0,6.284);
+  g.fillStyle='#9c5a54'; g.fill(); g.stroke();
+  g.beginPath(); g.arc(0,18,16,0,6.284);
+  g.fillStyle='#241d18'; g.fill();
+  g.strokeStyle='#e9ddbe'; g.lineWidth=1.4; g.stroke();
+  g.restore();
+
+  /* 毕加索式人脸 */
+  g.save();
+  g.translate(66,650); g.rotate(-0.05);
+  g.beginPath(); g.ellipse(0,0,53,76,0.04,0,6.284);
+  g.fillStyle='#eadfc1'; g.fill();
+  g.strokeStyle=INK; g.lineWidth=3.2; g.stroke();
+  /* 头发 */
+  for(var h2=0;h2<7;h2++){
+    wline(g,-30+h2*4,-74+Math.abs(h2-3)*3,-40+h2*5,30,'#2a221b',2.4,5,rnd);
+  }
+  /* 眼 */
+  g.beginPath(); g.ellipse(-12,-30,21,12.5,-0.08,0,6.284);
+  g.fillStyle='#f5edd8'; g.fill(); g.strokeStyle=INK; g.lineWidth=2.6; g.stroke();
+  g.beginPath(); g.arc(-13,-30,7,0,6.284); g.fillStyle=INK; g.fill();
+  g.beginPath(); g.moveTo(-32,-44); g.quadraticCurveTo(-12,-58,10,-40);
+  g.strokeStyle=INK; g.lineWidth=4; g.stroke();
+  /* 第二只眼（多视角） */
+  g.beginPath(); g.arc(16,-52,6.5,0,6.284); g.fillStyle='#f5edd8'; g.fill();
+  g.strokeStyle=INK; g.lineWidth=2; g.stroke();
+  g.beginPath(); g.arc(17,-52,2.6,0,6.284); g.fillStyle=INK; g.fill();
+  /* 鼻子 */
+  g.beginPath(); g.moveTo(6,-14); g.lineTo(24,26); g.lineTo(-2,30); g.closePath();
+  g.fillStyle='#c8963e'; g.fill(); g.strokeStyle=INK; g.lineWidth=2.6; g.stroke();
+  /* 嘴 */
+  g.beginPath(); g.moveTo(-26,52); g.quadraticCurveTo(-6,42,16,52);
+  g.quadraticCurveTo(-4,68,-26,52); g.closePath();
+  g.fillStyle='#a8403c'; g.fill(); g.strokeStyle=INK; g.lineWidth=2.4; g.stroke();
+  /* 侧脸轮廓线 */
+  wline(g,-46,44,-52,-18,'#2a221b',2.2,4,rnd);
+  g.restore();
+
+  /* 棋盘内部 */
+  g.fillStyle='rgba(243,235,215,0.66)';
+  g.fillRect(FX,FY,COLS*CS,ROWS*CS);
+
+  /* 网格 */
+  g.save(); g.globalAlpha=0.13; g.strokeStyle=INK; g.lineWidth=1;
+  for(var cx=0;cx<=COLS;cx++){
+    g.beginPath(); g.moveTo(FX+cx*CS,FY); g.lineTo(FX+cx*CS,FY+ROWS*CS); g.stroke();
+  }
+  for(var cy=0;cy<=ROWS;cy++){
+    g.beginPath(); g.moveTo(FX,FY+cy*CS); g.lineTo(FX+COLS*CS,FY+cy*CS); g.stroke();
+  }
+  g.restore();
+
+  /* 外框 + 错位套色 */
+  wrect(g,110,140,320,620,INK,4.2,mulberry32(3),2.2);
+  wrect(g,114,136,320,620,'#c08a3e',2.0,mulberry32(11),3.0);
+  wrect(g,106,144,320,620,'#48686a',2.0,mulberry32(19),3.0);
+
+  /* 胶带 */
+  slab(g,rnd,96,132,58,22,12,'#efe5c9',0.75);
+  slab(g,rnd,396,724,58,22,-9,'#efe5c9',0.75);
+  slab(g,rnd,394,134,54,20,7,'#e3d6b4',0.7);
+
+  /* 顶部标签 */
+  g.save();
+  g.fillStyle='#ece2c6'; g.fillRect(158,52,224,62);
+  wrect(g,158,52,224,62,INK,2.6,mulberry32(29),2.0);
+  g.fillStyle=INK; g.textAlign='center'; g.textBaseline='middle';
+  g.font='600 26px '+SERIF;
+  g.fillText('NIVEAU 2',270,78);
+  g.font='11px '+SERIF;
+  g.globalAlpha=0.75;
+  g.fillText('Période Rose · 1904 — 1906',270,101);
+  g.restore();
+
+  /* 左下记分卡 */
+  g.save();
+  g.fillStyle='rgba(240,232,210,0.85)'; g.fillRect(18,788,176,142);
+  wrect(g,18,788,176,142,INK,2.4,mulberry32(37),2.4);
+  g.restore();
+
+  /* 右下签名 */
+  g.save();
+  g.translate(300,922); g.rotate(-0.045);
+  g.fillStyle='rgba(33,26,21,0.55)';
+  g.font='italic 15px '+SERIF;
+  g.textAlign='center';
+  g.fillText('picasso tetris · code',0,0);
+  g.restore();
+
+  /* 颗粒 */
+  g.save();
+  for(var n2=0;n2<7000;n2++){
+    var px=rnd()*DW, py=rnd()*DH;
+    g.globalAlpha=rnd()*0.05;
+    g.fillStyle=rnd()>0.5?'#2a221b':'#fff8e6';
+    g.fillRect(px,py,1,1);
+  }
+  g.restore();
+
+  /* 暗角 */
+  var vg=g.createRadialGradient(DW*0.5,DH*0.46,DW*0.28,DW*0.5,DH*0.5,DW*0.95);
+  vg.addColorStop(0,'rgba(60,44,28,0)');
+  vg.addColorStop(1,'rgba(52,38,24,0.42)');
+  g.fillStyle=vg; g.fillRect(0,0,DW,DH);
+
+  return bc;
+}
+
+/* ================= 方块绘制 ================= */
+function drawCell(gx,gy,ci,alpha){
+  if(gy<0||gy>=ROWS)return;
+  var x=FX+gx*CS, y=FY+gy*CS;
+  var col=PAL[ci%PAL.length], colL=PAL_L[ci%PAL.length];
+  var mis=PAL[(ci+3)%PAL.length];
+  var rnd=mulberry32((ci*97+gx*13+gy*7)|0);
+
+  ctx.globalAlpha=alpha;
+  ctx.fillStyle='rgba(40,30,20,0.16)';
+  ctx.fillRect(x+3,y+4,CS-4,CS-4);
+
+  ctx.fillStyle=col;
+  ctx.fillRect(x+2,y+2,CS-5,CS-5);
+
+  ctx.fillStyle=colL;
+  ctx.fillRect(x+6,y+6,CS-13,CS-13);
+
+  ctx.globalAlpha=alpha*0.42;
+  ctx.strokeStyle=mis;
+  ctx.lineWidth=2;
+  ctx.strokeRect(x+3.5,y+0.5,CS-7,CS-7);
+
+  ctx.globalAlpha=alpha;
+  wrect(ctx,x+1.5,y+1.5,CS-4,CS-4,INK,2.2,rnd,1.5);
+
+  ctx.fillStyle='rgba(33,26,21,0.20)';
+  ctx.fillRect(x+9+rnd()*10,y+9+rnd()*10,2,2);
+  ctx.globalAlpha=1;
+}
+
+/* ================= 俄罗斯方块逻辑 ================= */
+var SHAPES={
+  I:[[1,1,1,1]],
+  J:[[1,0,0],[1,1,1]],
+  L:[[0,0,1],[1,1,1]],
+  O:[[1,1],[1,1]],
+  S:[[0,1,1],[1,1,0]],
+  T:[[0,1,0],[1,1,1]],
+  Z:[[1,1,0],[0,1,1]]
+};
+var KEYS=['I','J','L','O','S','T','Z'];
+
+function rot(m){
+  var R=m.length,C=m[0].length,o=[],y,x,row;
+  for(y=0;y<C;y++){row=[];for(x=0;x<R;x++)row.push(m[R-1-x][y]);o.push(row);}
+  return o;
+}
+var ROTS={};
+KEYS.forEach(function(k){
+  var arr=[SHAPES[k]];
+  for(var i=1;i<4;i++)arr.push(rot(arr[i-1]));
+  ROTS[k]=arr;
+});
+function cellsOf(m){
+  var out=[];
+  for(var y=0;y<m.length;y++)for(var x=0;x<m[y].length;x++)if(m[y][x])out.push([x,y]);
+  return out;
+}
+function free(b,cells,px,py){
+  for(var i=0;i<cells.length;i++){
+    var x=px+cells[i][0], y=py+cells[i][1];
+    if(x<0||x>=COLS)return false;
+    if(y>=ROWS)return false;
+    if(y>=0&&b[y][x]>=0)return false;
+  }
+  return true;
+}
+function evalBoard(b){
+  var heights=[],agg=0,holes=0,bump=0,lines=0,x,y,found,h;
+  for(x=0;x<COLS;x++){
+    found=false;h=0;
+    for(y=0;y<ROWS;y++){
+      if(b[y][x]>=0){ if(!found){found=true;h=ROWS-y;} }
+      else if(found)holes++;
+    }
+    heights.push(h); agg+=h;
+  }
+  for(y=0;y<ROWS;y++){
+    var full=true;
+    for(x=0;x<COLS;x++)if(b[y][x]<0){full=false;break;}
+    if(full)lines++;
+  }
+  for(x=0;x<COLS-1;x++)bump+=Math.abs(heights[x]-heights[x+1]);
+  return 0.76*lines-0.51*agg-0.36*holes-0.18*bump;
+}
+function best(board,key){
+  var rots=ROTS[key],bs=-1e9,bestP=null;
+  for(var r=0;r<4;r++){
+    var m=rots[r],cs=cellsOf(m);
+    var wmax=0;
+    for(var i=0;i<cs.length;i++)if(cs[i][0]>wmax)wmax=cs[i][0];
+    for(var px=0;px<=COLS-1-wmax;px++){
+      if(!free(board,cs,px,-4))continue;
+      if(!free(board,cs,px,0))continue;
+      var py=0;
+      while(py<ROWS&&free(board,cs,px,py+1))py++;
+      var nb=board.map(function(rw){return rw.slice();});
+      for(var k=0;k<cs.length;k++){
+        var yy=py+cs[k][1];
+        if(yy>=0)nb[yy][px+cs[k][0]]=1;
+      }
+      var sc=evalBoard(nb);
+      if(sc>bs){bs=sc;bestP={cells:cs,px:px,py:py};}
+    }
+  }
+  return bestP;
+}
+
+/* ================= 时间轴预计算 ================= */
+var FPS=24;
+function buildFrames(fps,seconds,seed){
+  var rnd=mulberry32(seed);
+  var board=[],x,y;
+  for(y=0;y<ROWS;y++){var row=[];for(x=0;x<COLS;x++)row.push(-1);board.push(row);}
+  for(y=ROWS-5;y<ROWS;y++){
+    var dens=0.38+(y-(ROWS-5))*0.13;
+    for(x=0;x<COLS;x++)if(rnd()<dens)board[y][x]=Math.floor(rnd()*PAL.length);
+  }
+
+  var total=Math.round(fps*seconds), dt=1/fps;
+  var frames=[];
+  var score=2566, lines=16, level=2;
+  var cur=null, lockT=0, clearRows=null, clearT=0;
+  var boardRef=board.map(function(r){return r.slice();});
+  var FALL=24, SLIDE=30, LOCKD=0.055, CLEART=0.32;
+
+  for(var f=0;f<total;f++){
+    if(clearT>0){
+      clearT-=dt;
+      if(clearT<=0){
+        var sorted=clearRows.slice().sort(function(a,b){return a-b;});
+        for(var q=0;q<sorted.length;q++)board.splice(sorted[q],1);
+        for(var q2=0;q2<sorted.length;q2++){
+          var empty=[];for(var x2=0;x2<COLS;x2++)empty.push(-1);
+          board.unshift(empty);
+        }
+        boardRef=board.map(function(r){return r.slice();});
+        clearRows=null; clearT=0;
+      }
+    }else if(!cur){
+      var key=KEYS[Math.floor(rnd()*KEYS.length)];
+      var bp=best(board,key);
+      var col=Math.floor(rnd()*PAL.length);
+      if(bp){
+        cur={cells:bp.cells,px:bp.px,xf:4.5,yf:-2.4,color:col,rot:0};
+        lockT=0;
+      }
+    }else{
+      /* 横移 */
+      if(cur.xf<cur.px)cur.xf=Math.min(cur.px,cur.xf+SLIDE*dt);
+      else if(cur.xf>cur.px)cur.xf=Math.max(cur.px,cur.xf-SLIDE*dt);
+      var curPx=Math.round(cur.xf);
+      var pyi=Math.floor(cur.yf);
+      if(free(board,cur.cells,curPx,pyi+1)){
+        cur.yf+=FALL*dt;
+        lockT=0;
+      }else{
+        lockT+=dt;
+        if(lockT>=LOCKD){
+          for(var c=0;c<cur.cells.length;c++){
+            var lx=curPx+cur.cells[c][0], ly=pyi+cur.cells[c][1];
+            if(ly>=0&&ly<ROWS&&lx>=0&&lx<COLS)board[ly][lx]=cur.color;
+          }
+          var fullRows=[];
+          for(var ry=0;ry<ROWS;ry++){
+            var isFull=true;
+            for(var rx=0;rx<COLS;rx++)if(board[ry][rx]<0){isFull=false;break;}
+            if(isFull)fullRows.push(ry);
+          }
+          boardRef=board.map(function(r){return r.slice();});
+          if(fullRows.length){
+            clearRows=fullRows;
+            clearT=CLEART;
+            score+=120*fullRows.length*fullRows.length*level/2;
+            lines+=fullRows.length;
+          }
+          cur=null; lockT=0;
+        }
+      }
+    }
+
+    frames.push({
+      board:boardRef,
+      cur:cur?{cells:cur.cells,x:Math.round(cur.xf),y:Math.floor(cur.yf),color:cur.color}:null,
+      score:Math.round(score),
+      lines:lines,
+      level:level,
+      clearRows:clearRows,
+      clearT:clearT,
+      cleart:CLEART
+    });
+  }
+  return frames;
+}
+
+/* ================= HUD ================= */
+function drawHUD(s){
+  ctx.save();
+  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillStyle='rgba(33,26,21,0.60)';
+  ctx.font='10px '+SERIF;
+  ctx.fillText('S C O R E',30,812);
+  ctx.fillText('L I G N E S',30,872);
+
+  ctx.fillStyle=INK;
+  ctx.font='italic 600 30px '+SERIF;
+  ctx.fillText(String(s.score),29,846);
+
+  ctx.font='italic 600 26px '+SERIF;
+  ctx.fillText(String(s.lines),29,902);
+
+  /* 右上角等级小章 */
+  ctx.save();
+  ctx.translate(470,470); ctx.rotate(-0.14);
+  ctx.globalAlpha=0.55;
+  ctx.strokeStyle=INK; ctx.lineWidth=1.8;
+  ctx.beginPath(); ctx.arc(0,0,26,0,6.284); ctx.stroke();
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font='600 18px '+SERIF;
+  ctx.fillStyle=INK;
+  ctx.fillText(String(s.level),0,1);
+  ctx.restore();
+  ctx.restore();
+}
+
+/* ================= 消行特效 ================= */
+function drawClear(s){
+  if(!s.clearRows||s.clearT<=0)return;
+  var p=1-s.clearT/s.cleart;
+  ctx.save();
+  ctx.textAlign='center';
+  for(var i=0;i<s.clearRows.length;i++){
+    var ry=s.clearRows[i];
+    var yy=FY+ry*CS;
+    ctx.globalAlpha=(1-p)*0.85;
+    ctx.fillStyle='#f6efd9';
+    ctx.fillRect(FX-6,yy-3,COLS*CS+12,CS+6);
+    ctx.globalAlpha=(1-p)*0.5;
+    ctx.strokeStyle=INK; ctx.lineWidth=3;
+    ctx.strokeRect(FX-6,yy-3,COLS*CS+12,CS+6);
+  }
+  /* 碎片 */
+  for(var j=0;j<14;j++){
+    var hx=hash2(j,s.clearRows[0],7), hy=hash2(j,s.clearRows[0],13);
+    var bx=FX+hx*COLS*CS;
+    var by=FY+s.clearRows[0]*CS+CS/2;
+    var ang=p*6+hy*6;
+    var dist=p*(60+hy*90);
+    ctx.save();
+    ctx.translate(bx+Math.cos(ang)*dist, by+Math.sin(ang)*dist-40*p);
+    ctx.rotate(ang*0.7);
+    ctx.globalAlpha=(1-p)*0.8;
+    ctx.fillStyle=PAL[j%PAL.length];
+    ctx.fillRect(-5,-4,10,8);
+    ctx.strokeStyle=INK; ctx.lineWidth=1.2;
+    ctx.strokeRect(-5,-4,10,8);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/* ================= 渲染入口 ================= */
+var FRAMES=[];
+
+function resize(){
+  W=window.innerWidth||DW;
+  H=window.innerHeight||DH;
+  cv.width=W; cv.height=H;
+  S=Math.min(W/DW,H/DH);
+  OX=(W-DW*S)/2;
+  OY=(H-DH*S)/2;
+}
+
+function renderFrame(t){
+  var idx=Math.round(t*FPS);
+  if(idx<0)idx=0;
+  if(idx>=FRAMES.length)idx=FRAMES.length-1;
+  var s=FRAMES[idx];
+
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle=PAPER;
+  ctx.fillRect(0,0,W,H);
+  ctx.setTransform(S,0,0,S,OX,OY);
+  ctx.drawImage(BG,0,0);
+
+  var x,y;
+  for(y=0;y<ROWS;y++){
+    for(x=0;x<COLS;x++){
+      var v=s.board[y][x];
+      if(v>=0)drawCell(x,y,v,1);
+    }
+  }
+  if(s.cur){
+    for(var i=0;i<s.cur.cells.length;i++){
+      drawCell(s.cur.x+s.cur.cells[i][0],s.cur.y+s.cur.cells[i][1],s.cur.color,0.92);
+    }
+  }
+  drawClear(s);
+  drawHUD(s);
+}
+
+/* ================= 启动 ================= */
+function init(){
+  var q=new URLSearchParams(location.search);
+  FPS=Number(q.get('fps')||24);
+  var seconds=Number(q.get('seconds')||12);
+  var seed=Number(q.get('seed')||20261019);
+
+  BG=buildBG();
+  FRAMES=buildFrames(FPS,seconds,seed);
+  resize();
+  window.addEventListener('resize',function(){resize();renderFrame(0);});
+  renderFrame(0);
+  window.renderFrame=renderFrame;
+  window.__ready=true;
+}
+init();
+
+})();
+</script>
+</body>
+</html>
