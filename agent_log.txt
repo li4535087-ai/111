@@ -1,8 +1,1576 @@
 dsh: reasoning:
-We need need create file proof.txt exactly dsh-cloud-ok. Simple write. But instruction says read existing before overwriting. Need check if exists. Could use bash ls or glob. We can write? The fs observation policy requires read before overwrite. Does file exist? Use glob or ls. Let's check.
+We need build a single-file Three.js forest cabin scene meeting constraints. Need inspect workspace. Must use tools. Let's start by listing files, checking package, puppeteer availability.
 dsh: reasoning:
-Now write exact content. The tool likely writes no newline unless included. "containing exactly: dsh-cloud-ok" means content exactly dsh-cloud-ok likely no trailing newline. Use write with content.
+Need inspect existing scenes/render script maybe useful.
 dsh: reasoning:
-Need verify exact bytes. Use wc -c and maybe od.
-Created `proof.txt` containing exactly `dsh-cloud-ok` (12 bytes, no trailing newline).
+Existing forest might be useful. Need view rest.
+dsh: reasoning:
+Existing forest scene is decent but user asks new forest3.html. Need make high-quality recognizable, trees with small animals, sunflower field and low weeds in clearing in front of cabin, butterflies bees, weather sun/cloud/fog can change. Need expose ready/renderFrame pure t. Need screenshots 540x960 t=0.5, 4, 8. Need inspect screenshots and iterate max 3. Need likely create compelling scene. Better than existing, maybe rewrite/adapt. We can leverage existing but must add animals (squirrel, owl, bird, rabbit maybe), richer scene, vertical portrait composition 540x960. Need ensure all visible.
+
+Need carefully design scene for portrait aspect. Camera should frame cabin at upper/middle and flower meadow lower foreground. Trees with animals. Weather transitions over maybe t 0.5 sun, 4 clouds, 8 fog? Requirement "在太阳天云雾等场景可以变换" — scene changes among sunny/cloudy/foggy. At t=0.5 sunny, t=4 cloudy maybe, t=8 foggy. Screenshots need each recognizable forest cabin. If fog too heavy at 8 could fail recognizability. Better sequence: sunny t=0.5, partly cloudy t=4, ethereal mist t=8 but still clearly cabin. Need probably weather cycle at t mod 24? "t pure" can use weather phase. If T fixed 8 perhaps smooth 0.5 sun, 4 cloud, 8 fog. But scene should loop or transform over longer. We can define cycle duration 24 sec: t 0.5 sunny, 4 sunny-ish/cloud transition maybe to cloudy by 8? To demonstrate all three in screenshots, map weather states: sunny for t <3; cloudy 3-6; mist 6-10; but t cycle. Pure function okay. We can drive by smooth transitions.
+
+Could create scene with procedural deterministic RNG only at init (allowed? Constraint says no Math.random/Date.now/performance.now, use seeded mulberry32 okay). Animations from t. We can use t to rotate. Avoid performance.now. Set renderer animation? Requirement all animation driven by t; can have requestAnimationFrame that calls renderFrame(performance clock?) but performance.now prohibited. Could just not animate unless renderFrame called; screenshots call it. But visual in browser static at t 0 unless render. Contract okay. Could call renderFrame(0). Maybe requestAnimationFrame using t from custom? Date.now banned. We can use a frame counter not time, but animation then not t-driven. Better static initial render and expose render. The grading likely calls renderFrame with times and screenshot.
+
+Need implement single file.
+
+Let's plan high-quality low-polyish stylized scene.
+
+Composition 540x960 portrait:
+- Camera at (0?, 5.4?, 15) looking at (0, 2.6, -5). Vertical FOV maybe 52. Need cabin visible middle at z -6, trees around, sunflowers foreground z -1..7.
+- Cabin 6w x 3.4h x 5d, roof, windows warm glow, porch, chimney with smoke.
+- Clearing in front flower patch, stone path to door.
+- Trees left/right and background, with:
+  - owl on branch (left tree) visible at maybe x=-4.5,y=4.8,z=-3
+  - squirrel on branch (right tree) x=4.8,y=3.9,z=-2
+  - small bird on roof maybe
+  - rabbit near meadow
+  - maybe deer in background
+- Butterflies and bees near sunflower field, visible at t=0.5 as colored shapes.
+- Sun disk in sky, clouds sprites, fog layer perhaps ground mist.
+- Weather transitions: sunny -> cloudy -> mist. At t=0.5 golden late afternoon sun? Need colors. Maybe warm sun.
+- Vertical framing: sky top 30%, cabin center, flowers bottom 40%.
+- include title? No text needed.
+
+Could use simple geometry and procedural textures. Need ensure can render with SwiftShader. Low poly counts, shadow maps. Need avoid expensive high segments. 540x960 maybe okay.
+
+Need maybe test with screenshot. We can write a standalone capture script with puppeteer (maybe user asked use local puppeteer, exact flags and viewport). Can create scripts/capture_forest3.mjs. Screenshots to agent_out.
+
+We need inspect images via read_image. Need probably iterate.
+
+Let's reason scene geometry and camera.
+
+Coordinate:
+Ground plane y=0. Cabin at (0, 0, -8) maybe. Front faces +z. Camera at (0, 3.5, 13.5) looking at (0, 3.2, -5). Vertical FOV 55. At 540x960 aspect 0.5625, horizontal FOV = 2 atan(tan(27.5)*0.5625)=~32.6°. At distance 18 to cabin, horizontal half width ~5.3 only. That's too narrow for wider scene. We need maybe camera further back (z=18-20) or wider FOV 65. Portrait 9:16 narrower horiz. To show whole forest/cabin width 12, need distance = 6 / tan(horizontal half ~18°) = 18.5 from cabin. Camera z=12 with cabin -8 => distance 20. Good. Vertical view huge (height 2*20*tan32.5=25.5). Can show sky/foreground. Cabin at center 25% height.
+
+FOV 55. camera y=4.2, z=13.2, looking (0, 3.4, -5). Distance 18.5. horizontal half at cabin = 18.5*tan(16.3°)=5.4; cabin 6 wide fits barely. Trees flanking at x ±6.5 may be at edge. Fine. Need maybe cabin width 5.6.
+
+Sunflowers foreground z 2-10, x ±5.5. With camera z 13.5, they'll be close and large, maybe obscure cabin. Need lower camera? Sunflowers height 1.2, camera y 4.2, near flowers at z 8 ~5.6 away and appear low in frame. Fine.
+
+Cabin:
+- group at (0,0,-7.8), front +z.
+- body box 6 x 3.2 x 4.6, base y=1.6.
+- use wood log texture maybe procedural horizontal planks, or stacked logs as cylinders? Could make log-cabin with side logs along x, 8 stacked; but textures/shadows more cost. Simpler body box with wood siding texture and corner posts. Add vertical corner logs? We can make low poly logs on front maybe 9 horizontal cylinders? Cylinder 8 segments each, fine. But cabin should be detailed and recognizable. A-frame? Let's do gable roof with two slanted planes, stone chimney. Two-story? Better cozy: cabin with A gable roof, warm windows, small porch, door, stone path, fenced maybe.
+
+Use BoxGeometry body, gable prism: roof made from two BoxGeometry planes rotated ± roof pitch, plus triangular gable face (ShapeGeometry). Could just use cone 4-sided as roof; classic but maybe. Better roof: two boxes 4.0? Depth. width half 3.5; pitch 35°. Roof panels dimensions: slope length sqrt(3.5^2+2.2^2)=4.13, box(4.3,0.25,5.6) rotated z ±angle, positioned x ±1.7 y=4.3. Gable triangle front/back via Shape. Dark shingle texture maybe procedural.
+
+Cabin front:
+- door at x=-1.1, y=1.05, z=2.36 (front plane 2.3); width 1.1 height 2.1. Wood, arched? use rounded? Could make rectangle.
+- windows x=1.3, y=1.75, warm glow with frame. Another side window.
+- porch: deck 3.8x0.25x1.2 at x=0,z=2.9 y=0.25, steps. Awning? Maybe small overhang from roof already covers? Roof depth can extend.
+- lantern at door glow.
+- chimney stone box at x=2.1 back/side, y=4.0, z=-8.8? with smoke sprites rising.
+
+Textures: wood plank, roof shingle, stone, grass, sunflower head maybe. Use CanvasTexture generated with seeded rng. Ensure no Math.random. Fine.
+
+Trees: Need forest look. Trees around cabin, perhaps 20-30. Use low poly conifers and deciduous:
+- trunk cylinder (6 seg) + 2-3 stacked cones for pine.
+- for deciduous, trunk + 3-4 icosahedron/dodecahedron foliage blobs (flat shading).
+- Colors varied.
+- positions carefully to frame scene and avoid blocking cabin:
+  left cluster: x=-9..-4 z=-15..3; right cluster x=4..10 z=-14..2. Back row behind cabin.
+- Add foreground tree trunk at far left and right partially for depth? Camera narrow; x ±7 at z 4 maybe in frame edges.
+
+Small animals:
+- Owl on branch of left tree: construct body ellipsoid (sphere scaled), head sphere, ears cones, eyes large white circles + black pupils, beak cone orange, wings. Branch cylinder horizontal. Position world maybe (-4.6, 5.2, -2.4), facing camera slightly. Since tree left at x=-5.6,z=-2.8 maybe branch extends right. Need visible against foliage. Use lighter background maybe. Could place owl at branch in front of dark green tree, body tan. Be sure size ~0.55 tall -> at distance 16, angular ~2°, screen 960 *2/60 ~32 px. Visible.
+- Squirrel on branch right tree: body ellipsoid orange, tail big curved (several spheres), head, ears, holding acorn. Size 0.45. Position (4.8,4.1, -3.8) facing left. Could be 25px. Fine.
+- Bird on roof: small bluebird 0.25 at roof ridge, visible maybe.
+- Rabbit near flower field: body cream, ears, at x=3.2,z=3.6; 0.4 height. At distance 10, 35px.
+- Maybe hedgehog/mushrooms. User asked 树上有一些小动物: owl and squirrel satisfy. Bird on tree too perhaps.
+
+Sunflowers and weeds:
+- Sunflower field in front of cabin: 40-55 flowers, each group stem cylinder, leaves 2 flattened spheres/planes, head disk with instanced petals? If each flower 12 petals => huge draw calls. Better use a single flower head sprite/plane with canvas texture; existing uses plane map. But side view? Camera from front, heads face camera, good. Use canvas texture transparent with petals. Add center brown disk as sphere/circle in front? Could make head group with plane texture and slight 3D center sphere. To save, use instanced meshes? Not necessary 40*4 meshes = 160 draw calls, okay. But heads always face camera via lookAt each frame, pure. We can create head planes 0.42 with detailed sunflower texture (yellow petals + brown center), plus a thin green back plane maybe. Petals more vivid via emissive slight. Add stems and leaves. Flowers positions deterministic with seeded rng in front z from -2? Cabin front is z=-5.5 (cabin -8 + depth 2.3). Clearing z -4..8. Place sunflowers around x±5, z -2..7.5, with path gap around x=0 near z -4..0. That ensures "小屋前方空地里种满向日葵". 55 flowers. Scale 0.7-1.3, heights 0.8-1.5.
+- Low weeds: instanced mesh of grass blades/clumps. Several thousand? 1500 instances of small cone/blade geometry, green/yellow. Perhaps use InstancedMesh of custom blade geometry (triangle) with side double; 2500. That yields nice field. Add clover clumps. Need not block flowers. Use tapered plane geometry maybe two crossed triangles. Could also add tiny white/yellow wildflowers (instanced spheres) for detail. Low grass around field.
+
+Butterflies: 8 groups with 2 wing planes each, maybe bigger 0.16, bright colors, trail. Bees: 6, bodies + stripes + wings. Add subtle bob and orbit around flowers. At t screenshots visible. Bumblebee yellow/black.
+
+Weather:
+- Sky dome shader with uniforms top/bottom colors and maybe sun glow? Could use shader with simple gradient + additive sun glow. We can add big sun sprite/mesh in sky at (maybe x=-8,y=13,z=-35) visible top-left. If sunny, bright; cloudy hide behind clouds or dim. Sun could be a sphere mesh with emissive material and sprite glow using procedural radial texture. Put at world(-11, 14, -38), maybe appears top left.
+- Clouds: sprite clusters; use textured sprites with cloud texture. Could place multiple layers. In cloudy phase move clouds so many across sky, opacity. Mist phase add fog at ground plus low opacity cloud sprites. Fog scene colored pale blue-gray.
+- Weather function interpolates according to weather phase based on t. Need pure. Could define loops? For screenshots 0.5,4,8 want distinct weather. Let's design weather "story" non-looping for 12 sec? But scene likely intended to animate for arbitrary t. Could use cycle 20s: sunny 0-6, cloudy 6-12, mist 12-16, back sunny 16-20. Then t=4 is cloudy not distinct? We need t=4 distinct. Better set states:
+  - t in [0,2]: sunny
+  - [2,4]: transitioning to cloudy
+  - [4,6]: cloudy
+  - [6,8.5]: transitioning to mist
+  - [8.5,13]: mist
+  - then loop 20 maybe.
+At t=0.5 sunny, t=4 cloudy, t=8 heavy mist. This yields screenshots showing all three. But t=8 near mist; need still cabin recognizable. Keep fog near 12 far 42? With cabin at distance 20, fog factor around? Fog linear near 12 far 42 => at 20 27% fog, okay. Camera flower 5-10 unaffected. Trees background fades. Good. Heavy mist maybe near 8 far 45. Use layered low mist sprites near ground. Cabin clear.
+- Use smoothstep transitions 1.5-3.5, 6-9? At t=8 mist in transition; can use 6.5-8.5 to be mist by 8. We'll tune.
+- Maybe determine weather via time cycle keyframes or functions. For simplicity:
+```
+const sunK = clamp(1 - smooth(1.8,3.6,t),0,1);
+const cloudK = smooth(1.8,3.8,t) * (1 - smooth(6.2,8.6,t));
+const mistK = smooth(6.2,8.8,t);
+```
+At 4 cloudK=1. At 8 mistK≈0.9, cloudK≈0.1. If t beyond 10 stays mist. Could cycle later via modulo e.g. `const cyc=t%24;` and at 0-...; t=8 matches mist. Fine. Need pure. Use a weather keyframe with cycle length 24 but transitions. Or simpler steady sequence and after 12 reset? Not necessary for these snapshots, but nice. We can have 24 sec loop:
+  phase = t % 24
+  sunny 0-5
+  clouds 5-10
+  mist 10-15
+  clearing 15-20
+  sunny 20-24
+But screenshots 0.5 sunny, 4 mostly sunny, 8 cloudy close to mist maybe. Requirement likely screenshots intended to show time and weather changes. Could set cloud at 4 and mist at 8 with state as above and then loop after 12. At t=10 mist still. Cycle 20: t=0.5 sun, 4 cloud, 8 mist. Then 12-14 clearing, 14-20 sun. Fine. Need weather recompute in renderFrame.
+
+To ensure at t=4 cloudy but still bright recognizable. Maybe cloud transition at 2.6-4.5, so t=4 ~almost full cloud but camera lights okay.
+Mist 5.8-8.2, so at 8 almost full mist. Better.
+
+But our screenshots at 0.5/4/8 should be visually distinct. Need maybe exposure adapt not too dark.
+Sun colors:
+- sunny: sky top 0x5aa7e0, bottom 0xd9eef4, sun warm 0xfff0c8, intensity 2.2; hemisphere 0.9.
+- cloudy: top 0x7c8f9d, bottom 0xc4ced2, sun 0xe8eef0 intensity 0.65, hemi 1.15.
+- mist: top 0x9aaab2, bottom 0xd9e1e3, sun 0xc8d4d8 intensity 0.35, hemi 1.25, fog near 7 far 35. Maybe too foggy. Use near 10 far 55. The image should have nice atmospheric depth.
+- Add cloud sprites opacity transitions and color dark gray.
+- Mist low-lying sprites around ground/trees, opacity at mist 0.2-0.35. Use many sprites horizontally.
+
+Sky shader maybe use top/bottom colors and sun glow simple. Add sun disk sprite with texture, opacity sunK. Use additive blending. Cloud sprites maybe behind trees at z -40..-20, y 12-25. Need visible in portrait at top. Camera looks slightly up? With target y 3.4 from camera y 4.2, horizon maybe around 47% vertical. Top 40% sky. Sun at y 16, z -35 likely visible top-left. Let's calculate vertical angle: dy=12, dz=-45 => 15°, camera looks down slightly -2.5°, vertical half 27.5, so around 60% screen? Actually upward 15° from view center → screen y around 28%. Good.
+
+But if camera at z 15, sun z -50, y 22 for top. Could create sky dome with sun glow in shader based direction; easier add sprite at (-16,18,-45) scale 10. It would appear left, y 18 vs camera 4, dz 60 => 13°, upper middle. Good.
+
+Need camera composition maybe more dynamic at t? For pure function and images at different t, camera could slowly orbit/dolly as weather. But must maintain recognizability. Use subtle camera drift:
+```
+const camX = 0.5*Math.sin(t*0.07)
+camZ = 15.2 - 0.3*Math.sin(t*0.1)
+lookAt(0.1,3.1,-6)
+```
+At t 0.5/4/8 differences barely. Fine. Or dynamic angle maybe not needed. Ensure same t deterministic.
+
+Need rendering performance. Shadow map 2048 maybe okay SwiftShader 540x960 but possibly slow. Use 1024, PCFSoft. Directional shadow area 30. Trees and cabin cast shadows. 400 draw calls could be slow but only 3 shots. Keep maybe <250 calls. Could use instancing for grass and leaves? Use instanced for grass blades (1 draw), flowers petals via sprites? We can make each sunflower a group of stem, head sprite plane, leaves 2 -> 55*4=220 draw calls. Plus 30 trees *4=120. Total 400. SwiftShader may still render 540x960 within seconds. Existing scene 420 instanced grass, 26 flowers etc. Fine.
+
+Could optimize flowers: use instanced stem mesh and instanced head planes impossible to always face camera in instancing; can billboard via shader. Simpler treat flowers as groups. 45 flowers good.
+
+Maybe create custom sunflower head via geometry merged? We can use sphere center + petal texture plane. The texture transparent and alphaTest. Add leaves as cone/sphere. Stems cylinders. 45*4 = 180. Fine.
+
+Need perhaps a path: curved stone path from porch to foreground center. Make 12 flattened cylinders/boxes with gray colors along z 0..7, x wiggle. Since camera at z 15, path foreground. Add stones.
+
+Mushrooms alongside path maybe. Cute detail.
+
+Log pile, fence? Add a small fence left of cabin maybe not necessary.
+
+Forest backdrop:
+- ground circle radius 80 with procedural grass texture. Add slight low hills (spheres flattened) in background? Could make ground not flat? Simpler with a few large low-poly hill meshes at z -30 y negative? Forest tree line enough.
+- Add distant pine silhouettes in fog.
+
+Lighting:
+- Hemisphere sky/ground.
+- Directional sun with shadows. Position (-12,18,10) maybe sunlight from front-left to cast shadows toward back-right. But sun sprite top-left. Great.
+- Ambient fill.
+- Warm lantern point light at porch (cost expensive shadow off) small intensity 4, distance 6. Window emissive. Could add one point light (no shadow). Nice.
+- Maybe fireflies? At mist? Not necessary.
+- Tone mapping ACESFilmic, sRGB.
+
+Color palette: lush forest, warm cream light, yellow sunflowers.
+
+Need implement textures:
+- grass ground: canvas 512 base #527c3c, speckles, mosaic noise. Repeat 24.
+- wood wall: canvas 256 base #9d7248 with horizontal planks/grain.
+- roof: canvas dark shingles pattern.
+- stone: maybe boxes with gray material and rough texture.
+- sunflower texture: detailed: 18 oval petals around, darker outlines, central disk with dots. Use 256. Need petal tips bright yellow. On plane with transparent alpha. Ensure canvas transparent. Material alphaTest 0.4, side double, color maybe.
+- leaf? Use geometry.
+- cloud texture: radial blobs as existing.
+- sun glow: radial gradient.
+- butterfly wings: canvas maybe colored gradient? We can use planes shaped via ShapeGeometry (wing) for nicer butterflies. Use simple Shape of two lobes. Three or four colors. Use mesh standard double side with emissive.
+- animal details.
+
+Let's think scene coordinate and visibility exact.
+
+Camera: y=4.5, z=15.5, target (0,3.15,-6). Distance ~21.5. FOV=52? Horizontal half=atan(tan(26°)*0.5625)=15.35°, at cabin distance 21.5 half width=5.9. Cabin width 6.4 fits nearly. Trees at ±7 may be cropped, okay framing. Vertical half=26°, height at cabin 21.5*tan26=10.5. Screen center y target 3.15. Top world 13.6 at cabin plane; sky. Bottom world -7.4, but ground at 0 visible. Actually vertical axis at cabin includes sky top and ground lower. Foreground flowers z 2..10, distance 5.5..13.5, vertical half at z=6 (9.5 dist) 4.6 -> frame spans y -1.45..7.75 at z=6; ground y=0 at bottom 31%. Sunflowers height 1.2 occupy lower part. Cabin 0..5.8 occupies around mid. Great.
+Camera target y 3.2 means straight ahead y3.2 at cabin, horizon. Sky starts above. Could show sun.
+
+Maybe camera at y=3.2, target y=3.4? Slight upward? Better horizon around 40% height. Portrait usually need foreground. Camera y=3.4; target y=3.0 (down slightly). Fine.
+
+Cabin at z=-7.5; front z=-7.5+2.3=-5.2. Path starts -5.
+
+Flower field z=-3.8 to 7.5, x -5.5..5.5. Some flowers between camera and path, good. Avoid placing at x within 0.6 for z -3.5..2 (path gap) with seeded accept. Since path curves slight. Use rejection.
+
+Trees positions:
+- Left front: (-6.4, -2.5), scale 1.05 deciduous, owl branch. Maybe main owl tree at (-5.2,-3.8)? Cabin left edge x=-3.2. Tree at x=-5.6,z=-3.0 gives closeness, trunk not block cabin? We want branch over left side.
+- Right: (6.0,-3.2) scale 1.1, squirrel branch.
+- Background: (-10,-16),(-6,-19),(-2,-22),(3,-24),(8,-18),(12,-12), etc.
+- left mid (-8.5,-9), right (9,-10).
+- More around outer.
+
+Need trees visible above and sides. Tree canopy height 8-12. At distance 20, vertical half 10.5: tops maybe above frame. Okay.
+
+Deciduous tree: trunk height 3.5*s, foliage spheres at y 4..7. tree around 7-9 high. Pine height 7-10.
+
+Owl tree: branch horizontal y=4.2 near x=-4.2,z=-3.5. Camera sees branch and owl. Tree trunk at -6,z=-4, branch extends +x toward cabin. Need orient branch along x. Owl at (-4.5,4.9,-3.2)? Branch y=4.4. Owl stands on branch y=4.65. Facing camera +z and slightly right. Construct group orientation y maybe 0.25. The owl is between camera and cabin left? x -4.5, z -3.5, distance 19; cabin left edge x -3.2. It might overlap foliage not cabin. Fine.
+
+Squirrel tree: trunk x=5.8,z=-3.8, branch at y=3.4 extending -x. Squirrel at (4.6,3.75,-3.2) or maybe on trunk? Needs visible. Add branch.
+
+Bird on cabin roof ridge: tiny blue bird at roof y maybe 6.2.
+
+Rabbit: at (2.8,0,4.2), side profile, facing left. Height 0.55. Add body, head, ears, tail. Since flowers tall might hide; place in small gap, scale 0.75, maybe on path edge. Could appear ~35px. Add near stone path x=2.0,z=2.5. We need no sunflowers covering. We can create "clear" zone around rabbit x 1.8-3.4,z 1.6-3.6 to avoid flowers/grass. Maybe rabbit sitting on a stump at x=3.4,z=1.2? A stump of height 0.4; then rabbit visible even with grass. Good.
+
+Owl and squirrel need enough size. Owl body 0.5 high maybe and face charm. At 19 distance, fov 52, pixel per unit ~960/(2*21.5*tan26)=47 px/unit. 0.5 = 23px. Reasonable. Make owl 0.7 => 33px. Squirrel body 0.45 + tail 0.5 => 22px. May be okay. Put trees nearer (z=0) maybe distance 15 => 60 px/unit. Owl tree at (-5.8, 0.5) and branch to x=-4.2,y=4.2,z=1.0, but then large tree might block left of cabin? It's on left side, good. Closer animals larger. However branch may appear in front of cabin/roof? x=-4.2 not overlapping (cabin left edge -3.2), so okay. Tree trunk at x -6.5. Excellent. Squirrel tree at right x 6.2,z=-1.0, branch x 4.4,y 3.8,z=-0.4. Squirrel visible to right of cabin, in front of right trees. Both nearer camera.
+
+But if tree at z 0.5, its canopy may cover left sky and maybe cabin. That's forest framing. Fine.
+
+Need ground line. Add bushes, ferns.
+
+Weather transitions:
+Need ensure sun shadows change intensity. Use interpolation helper.
+
+To maximize colors in sun:
+- Set renderer.toneMappingExposure 1.1;
+- sun.intensity 2.2 warm, hemi 1.0.
+- materials with moderate color.
+- Fog sunny near 40 far 120 (light haze). Cloudy near 25 far 80. Mist near 9 far 42. But background trees at z -20 relative camera 35; in mist they'll vanish, okay.
+- For sun/cloud/mist, avoid exposure too low. Keep 1.0, cloudy 0.96, mist 1.0.
+- Add low mist sprites visible at t=8: 20 flattened sprites along z -8..8, y 0.4-1.2, opacity 0.15-0.3. Their positions drift with t but wrap modulo. Using sprite material fog:false maybe, depthWrite:false. Color white-blue, blending normal.
+- Cloud sprites at high sky and some around mountains. Need clouds visible at t=4 as gray and at t=8 almost white fog.
+- Sun disk fade by 1-cloudK-mistK. Maybe at t=0.5 visible.
+
+Sun disk as sprite positioned relative to camera? If fixed world, at other camera t little movement. Fine. Position (-16, 19, -55), scale 16. Sky dome radius 180. Use sprite depthWrite false, blending Additive. Sun appears maybe left upper. Could add lens flare? no.
+
+Sky shader could include sun halo using direction to sun. Simpler sprite.
+
+Cloud sprites move with time slowly via t, using initial base x and wrap:
+```
+s.position.x = ((baseX + t*speed + 100) % 200) - 100
+```
+pure. But weather opacity. In sunny, a few clouds low opacity. In cloudy high opacity and cover sun. For cloud texture color, set material.color 0xffffff, opacity. Cloud group uses sprites with depthWrite false, maybe depthTest true. Place z -35..-20. Some at left. Sprite scale 20-35. Need look nice, not same texture repeated visibly. Generate 3 cloud textures using seeded rng? Could call cloudTexture(seed) but seeded global sequential. Fine. Use 3. Each sprite maybe 1 texture. 16 clouds.
+
+Might create cloud sprites at sky y 12-26 z -40..-25. With fog maybe they should be fog false.
+
+Low mist sprites use separate soft texture (cloud texture) scaled flat, opacity. In mist, maybe opacity .25. They are at world y 1, z -10..8. But sprites always face camera, horizontal cloud looks fine.
+
+Sunflowers:
+Need heads always face camera. Use plane lookAt(camera.position.x, head world y + 2? Actually heading head normal +z should point camera. `head.lookAt(cam.position)` works for plane normal +z? PlaneGeometry faces +z, lookAt makes +z point target. Good. But if camera to right, all heads aim. Add slight nod/rotation.
+- Head group consists of plane with texture and maybe center sphere. If plane always lookAt, center sphere can hide behind plane; not needed.
+- Make head slightly curved? Plane with alpha texture enough.
+- Petal texture includes transparent. Add a slight emissive to glow.
+- Flower head could appear too flat. Add second smaller plane offset? Not.
+
+Stem bend: cylinder oriented slight. Use Group pivot at base? easiest:
+```
+stem = Cylinder height h, position y h/2; group rotation.z small
+head position y h; if group rotates head goes with it.
+```
+Head at h, group rotates ±0.03. Then head lookAt camera resets rotation? head is child and lookAt world coords works but parent's rotation applies? `lookAt` on child uses world quaternion with parent? In Three, Object3D.lookAt accounts parent world rotation? It computes quaternion and then if parent exists adjusts. Should be fine. Alternatively set head rotation relative. Use lookAt each frame after group rotation.
+
+Leaves: use ShapeGeometry/Plane with leaf texture? Could use custom leaf shape via Shape:
+```
+Shape with quadraticCurveTo, ShapeGeometry, green doubleSide. 
+```
+Two leaves attached at y h*0.45, rotated. Petal texture maybe.
+- Add small yellow wildflowers around as InstancedMesh cone? Use tiny flower billboards in grass. Could do 60 groups but not needed.
+
+Grass:
+Create custom blade geometry with 3 triangles? Use `THREE.BufferGeometry` positions for 3 blades crossed, maybe 9 vertices. Material DoubleSide flat. InstancedMesh 1600. Random rotation/scale. Place in flower field z -4..8, x ±5.5, excluding path? It's okay grass around path. Add beyond field.
+- For stalks, use cone geometry (0.035,0.5,3) maybe instanced. It looks like clumps. Existing did this. Better create "tuft" geometry merging 3 thin tapered blades. Could manually BufferGeometry triangles each blade with base two points and tip. 5 blades with slight angles. Use MeshStandardMaterial vertexColors? Color per instance via setColorAt. InstancedMesh supports instanceColor. Set greens varied. Good.
+- Build 3 blades geometry:
+For each blade i angle around, base at ±0.035 y0, tip offset x maybe 0.07, y 0.4. Use triangle. Geometry non-indexed. DoubleSide. Then 2000 instances. Use setColorAt with green/yellow.
+- Grass blades could cast no shadow. receiveShadow maybe false. Transparent no.
+- Add low weeds (broad leaves) maybe use 100 dandelion groups with stems + white seed head? User says low weeds, grass suffices plus wild carrot? We can add clover leaves as small planes, but grass is fine. Add 120 small yellow/purple wildflower dots (instanced spheres at y .15) in field.
+- Dandelion seed heads: 10 white spheres with fine? not needed.
+
+Butterflies:
+Make wings using Shape geometry from points in XY maybe top-view? Let's define butterfly plane orientation. We can create each wing as a custom shape in XY plane, with origin at hinge, extends x outward and y up/down. Then group at body; wings flap around y axis? Butterfly body along z? Better simple: two wing meshes in XZ? Common: wings are planes lying roughly horizontal, flap up/down around z? But camera sees from front. Could orient butterfly upright-ish so wings visible. Existing used PlaneGeometry(0.11,0.15) positions x ±0.052 and rotates around y. This means wing planes vertical, flapping like opening book, viewed from front; nice. Make wing shape with rounded lobes in XY plane with hinge at origin, rotate around y. Group orientation with heading. Use DoubleSide with bright emissive.
+- Could make butterfly group yaw to direction, plus slight pitch. body cylinder black. Antennae maybe lines.
+- 8 butterflies with colors yellow/orange/white/pink, orbit near flowers.
+- At t=0.5 positions deterministic; ensure some near center foreground (visible).
+- Since t drives position based phase and t. At t=0.5/4/8 positions differ.
+
+Bees:
+- Group body scaled sphere, black stripe rings maybe 2 torus? Use 3 small cylinders/ spheres. Wings translucent planes, bob and orbit. Add point maybe no. 8 bees.
+- faster orbit around sunflower heads. Good.
+
+Animals:
+Owl:
+- body sphere scale (0.28,0.38,0.22), color tawny.
+- head sphere scale .27, maybe merge.
+- ear tufts cones 0.12.
+- eye discs white circles/spheres at front z=0.2, pupils black + highlights, eyebrows brown.
+- beak cone orange pointing +z (rotate x=PI/2?) ConeGeometry default along y; rotate x=PI/2 makes point +z.
+- wings flattened spheres sides, maybe.
+- feet small.
+- Branch cylinder horizontal along x.
+- Add maybe owl head subtly tilts with t sinusoid (animation driven).
+- Body facing camera: group rotation y=0.2? Our front is +z, camera +z, so face +z.
+
+Squirrel:
+- body sphere elongated orange, head, ears, tail using 3-5 spheres in arc behind. Eye black, nose. Arms. Acorn small brown sphere with cap.
+- Facing camera / slightly left. tail reddish. On branch.
+- Animate tail slight with t? modify tail group rotation.
+
+Bird on roof:
+- tiny blue body, head, beak, tail; maybe 0.25. On ridge. Facing left. Could animate head bob.
+
+Rabbit:
+- body ellipsoid cream/brown, head, long ears (capsules? Cylinder + sphere or scaled spheres), tail, legs. Sitting on stump/path. Facing left. Animate ear twitch with t. At 0.4 scale. Add eyes black.
+- Maybe add hedgehog near mushrooms: not needed.
+
+Maybe deer at background? Not required.
+
+Trees:
+Need make trees more varied. Function makePine(x,z,s): trunk cylinder, 4 cones. Function makeOak: trunk with maybe branches? For small animal tree, need branch extension. We can create custom.
+
+Tree canopy: use IcosahedronGeometry(1,0) scaled, several blobs. FlatShading. Colors. Random seeded. Need castShadow.
+
+Also add tall pines background for forest depth. Fog helps.
+
+Lighting quality:
+Ambient/hemisphere and directional. Shadows. Add contact shadows? Real shadows okay. Shadow map 2048 maybe. Use PCFSoftShadowMap, 2048. Camera shadow range 18. Need include trees and cabin and flowers. Maybe 1024 enough. Use 2048 for 540x960 clarity. SwiftShader may cost but fine.
+
+Need ensure no all-black/white. Should be rich.
+
+Could use postprocessing? No, single file plus imports from examples? Requirement only three import, could import EffectComposer from examples? Not prohibited but avoid. Use renderer directly.
+
+Could add vignette via CSS overlay radial gradient for cinematic. But screenshots still scene. CSS overlay allowed. A subtle vignette div pointer-events none. Also color grading via CSS? Better no.
+
+Potential issue page viewport 540x960 but deviceScaleFactor maybe 1. Need renderer setSize(innerWidth, innerHeight). Good.
+
+Need handle `renderFrame(t)` pure: all scene object positions and materials set from t, no accumulation. Camera based t. Weather based t. Clouds based t. Smoke based t. Animal animation based t. Flower sway based t. No Date. Init rng is deterministic but sequence order fixed. We must ensure renderFrame calls do not consume rng. Build all geometry upfront. Good.
+Could have `window.renderFrame(t)` update and render. Need initial render maybe renderFrame(0). __ready true after first render. Important not use performance clock.
+
+Need maybe include a loading overlay? No.
+
+Need capture script exact flags:
+```
+puppeteer.launch({headless:'new'? true, args:['--no-sandbox','--enable-unsafe-swiftshader','--use-gl=angle','--use-angle=swiftshader','--allow-file-access-from-files','--disable-dev-shm-usage']})
+viewport 540x960 deviceScaleFactor 1
+goto file:///.../scenes/forest3.html
+waitForFunction __ready
+for [0.5,4,8] evaluate renderFrame, screenshot to agent_out/shot_a.png...
+```
+Need ensure page loads module from ../node_modules path. file url with allow file access. Browser security may allow file modules? Chromium modules from file deny CORS? file:// module script may load local file? Existing pipeline has `--allow-file-access-from-files`, likely works. Need test.
+
+Need create. First maybe check Chromium executable. Puppeteer installed. Run small test perhaps after scene.
+
+Let's design scene code in detail. Could write a big HTML ~1000 lines. Need be careful no syntax errors.
+
+Let's plan structure:
+
+HTML head style:
+```
+html,body{margin:0;height:100%;overflow:hidden;background:#0e1512}
+canvas{display:block}
+#vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 42%, transparent 45%, rgba(8,13,10,.28) 100%)}
+```
+Maybe avoid negative effect on screenshots? Subtle.
+
+Module:
+- imports.
+- query params maybe not needed; but use `SEED = Number(q.get('seed') || 20261019)`. Constraint no Math.random. Good.
+- seeded RNG. Precompute rng.
+- constants W,H.
+- renderer setup. Use antialias true, alpha false, powerPreference high-performance. pixelRatio 1.
+- shadows.
+- scene, fog.
+- camera.
+- helpers clamp, smoothstep, lerp.
+- Canvas textures.
+
+Detailed texture functions:
+
+`makeCanvas(w,h)` returns canvas/ctx.
+`grassTexture`: 512, fill base, draw 3000 short lines/specks, maybe patches with transparent circles. Use rng. Color variations dark/light.
+`woodTexture`: 256; base #8a5f3a. Horizontal planks every 32; dark seam 3; grain lines wavy. Add knots.
+`roofTexture`: 256 base #3b3330; rows of shingles with offsets; lighter tops.
+`stoneTexture`: 256 base gray; random polygons maybe. For chimney.
+`sunflowerTexture`: 256 transparent; petals: 20 ellipses around center radius 80, each petal length 52 width 16, gradient yellow-orange; center brown with 200 dots. Need orientation y? Draw with transform rotate. Use `ctx.ellipse(0,-68,13,38,0,0,2π)` in rotated coordinate. Texture coordinates orientation no matter. Add outline.
+`cloudTexture`: 256 transparent; use deterministic circles with radial gradient. But if global rng called, okay. Make function takes rng closure? We can call once. Need maybe generation order stable.
+`glowTexture`: radial gradient white to transparent.
+`leafTexture` maybe no.
+`butterflyTexture` maybe no.
+
+Potential CORS with CanvasTexture no issue.
+
+Materials:
+```
+const matGrass = new THREE.MeshStandardMaterial({map:grassTex,color:0xffffff,roughness:1});
+const matWood...
+```
+
+Sky:
+ShaderMaterial:
+```
+uniforms topColor bottomColor offset exponent sunDir? 
+vertex: varying vec3 vWorld; ... 
+fragment: float h=normalize(vWorld).y; ... gradient; maybe add horizon haze.
+```
+Could have a sun glow integrated in sky shader using sunDir uniform and sunStrength. This is better than sprite. Add:
+```
+float sd = max(dot(normalize(vWorld), normalize(sunDir)),0.0);
+vec3 col = mix(bottom, top, pow(clamp(h,0.,1.),0.7));
+col += sunColor * pow(sd, 900.0) * sunGlow; // disk
+col += sunColor * pow(sd, 12.0) * 0.2*sunGlow; // halo
+```
+A sphere with radius 200. Ensure sky not affected by fog. `depthWrite:false`, side BackSide. `vWorld = (modelMatrix*vec4(position,1)).xyz` but sky mesh at origin. Normalize in frag.
+Uniforms top, bottom, sunDir (world position normalized), sunColor, glowStrength. In renderFrame update colors and sunDir maybe fixed (-0.35,0.55,-0.75) normalized.
+Clouds sprites in front of dome. Add no sun sprite maybe integrated. To show visible sun in screenshot, pow 800 gives disk if alignment. Compute sun dir for screen: camera at (0,3.5,15.5), target (0,3.2,-6). Sun direction normalized (-0.45,0.5,-0.74)? Horizontal angle from forward (0,0,-1) is 31°, horizontal FOV half 16°, so outside frame! Need sun within horizontal FOV ±16°: x/z ratio <= tan16=0.286. So sun direction x=-0.18, z=-0.95, y=0.45. Vertical angle atan(0.45/sqrt(.18²+.95²))≈25°, vertical FOV half 26°, center look down 0.8°, so sun near top edge 48%? Actually screen y 8%, too close. Use y=0.35 => 20°, screen y 21%. Good. SunDir = normalize(-0.16,0.34,-0.93); x angle -9.8°, left of center. Great. Then through gaps between clouds. At t=0.5 visible cloudy, t=4 hidden by cloud opacity/glow.
+- Sky top color could be bright.
+
+Clouds:
+Create cloud texture. Sprite material color white, transparent, opacity. 18 sprites. Positions baseX in [-65,65], baseY [14,30], z [-55,-28], scale x 22..40 y 10..18. Need within view: x at z -40 and dist 55, horizontal half at that depth 55*tan16=15.7, so x range ±15 only visible! Wait sky depth. Our sky sphere and clouds at z -50. At z -50 (distance 65), frame horizontal width 2*65*tan(16.3)=38. So x ±19. Many clouds outside. Place x [-18,18] for background. Since portrait narrow, need clouds appear top. Set z [-45,-25], x [-20,20], y 15-28. For depth at z=-30 (dist 45) half width 13.2. So x [-14,14]. Good.
+
+But cloud sprite can be wide 25, maybe overlap. Place some distant side. Fine.
+Need clouds visible at t=4: cover upper sky. Place several across upper frame, opacity ~0.65.
+In sunny t=0.5, cloud opacity 0.08 maybe barely.
+In mist, all opacity high and low, but scene fog.
+
+Cloud movement: position.x = baseX + (t*0.08*windSpeed) maybe subtle, and modulo? Since at t 8 moves 0.6 units, fine. For long t loops not important. But if pure and t arbitrary, x grows linearly. That's allowed. Could oscillate: baseX + sin(t*0.02+phase)*2. Better pure and bounded. Use slow drift `baseX + Math.sin(t*0.035+phase)*3` maybe clouds breathe. Fine.
+Cloud sprites need sometimes in front of sun to obscure. Since sun is shader in sky, clouds (transparent sprites) can overlay sun. Their z -35, sun at sky far. Good.
+- At sunny, some clouds at x -10,y 20 could cover sun? op 0.08 negligible.
+- At cloudy op .55-.8.
+
+Low mist:
+- 24 sprites using soft cloud texture, positioned x [-12,12], y 0.3-1.7, z [-16,8], scales (10..20, 2.5..5). In mist opacity .18-.32; cloud weather maybe 0.02. Color 0xdde6e8. They will overlay cabin low parts and flowers? They are at various z in front/behind; some may be in front of camera flowers causing white veil. We want atmosphere; maybe place behind cabin and between trees z -18..-4, plus some foreground at z 2 with low opacity. Use depthWrite false. Since they are transparent and in front, could wash out. Keep opacity at mist ~0.18. Add fog plus.
+- Need not use sprites with fog false? For low mist, fog false maybe.
+
+Ground:
+- Circle radius 80 rotated. Maybe use a custom slightly undulating plane? Flat enough. Add subtle mounds as flattened spheres covered grass material at background.
+- Use ground texture repeat 18.
+- Add a darker "clearing meadow" patch in front as separate plane using a lighter grass texture? Could add ellipse mesh maybe. But flower/weeds cover.
+
+Cabin details:
+Let's define cabin group position (0,0,-7.6). body dimensions (6,3.2,4.6). front z=2.3. body y=1.6. wall wood texture repeat maybe (3,1.5).
+- Foundation stone: box(6.3,0.5,4.9) y=0.25 material stone. maybe.
+- Body.
+- Gable triangles at front/back: Shape points (-3,0),(3,0),(0,2.0), extrude? Use ShapeGeometry, position y=3.2,z=2.31 front. Material wood. But roof panels cover. Add triangle plane dark wood. Make both front/back.
+- roof panels: width slope 4.0, depth 5.6, thickness 0.28. left panel at x=-1.65,y=4.15,z=0, rotation.z=-? Let's derive: roof plane rotated around z. Base body top y=3.2, ridge y=5.2, half width 3.4. Slope length sqrt(3.4²+2.0²)=3.94. Panel centered at x=-1.7,y=4.2; angle=atan(2/3.4)=0.532 rad. For left side, panel rises to right, rotation z=+0.532? A box along x, rotate z positive lifts right end. yes. right panel rotation z=-0.532. width 3.95, depth 5.7. Position x ±1.7,y 4.2.
+- roof ridge beam at y=5.2, z, length 5.9, box(.22,.18,5.9). Maybe a cylinder rotated x.
+- Chimney at (2.1,4.2,-1.2), box .65x2.2x.7, stone, cap slab. Extends from roof to 6.0. At roof panel? okay. Add smoke anchor world (2.1,6.2,-8.8?) We'll attach to cabin group.
+- Front door at x=-1.0? Maybe centered? Flower field path leads to door. Door x=0 centered at front. Path goes center. Windows left/right. Door x=0, window x=-1.8 and 1.8. But porch steps. Let's design door centered x=-0.5? Path centered? Better door x=-1.1 and path curves to it, windows x=1.1. Hmm. For symmetry and readability, door center x=0, window on either side (x=-1.9,+1.9). Porch at z=2.9. Path center to door. Cute.
+- Door: width 1.2, height 2.05, plank material, frame border boxes, knob, small window in door maybe 0.35x0.4 warm. Add awning? Roof overhang enough.
+- Windows: warm orange planes 0.8x0.9 at y=1.75, with dark frame and crossbars, slight emissive. Maybe glow sprites behind.
+- Porch deck box(4.0,0.25,1.4) at y=0.28,z=2.9. Steps two levels.
+- Posts and small porch roof? Roof overhang already. Add two posts at x±1.8,z=3.4 from deck to roof? They would be tall. Could add small awning over door instead: box(2.2,0.12,1.1) at y=2.7? But front roof edge may already. Let's keep simple.
+- Lantern to right of door: black post with warm sphere + point light. Good at x=0.95,y=2.25,z=2.45. Use material emissive. PointLight intensity 5 distance 5 decay 2.
+- Log pile at left front side (x=-3.8,z=0.8) maybe outside cabin, 5 cylinders stacked. Adds detail.
+- Fence? Maybe small fence left of path: 3 posts with 2 rails at x=-4.5..-3,z=0? Might clutter. Could add flower boxes under windows.
+
+Tree function:
+Materials:
+```
+const barkMat = ...
+const pineMats = [colors]
+const oakMats...
+```
+`addPine(x,z,s,rot)`:
+- trunk cylinder radius .2*s height 2.5*s y=1.25s, brown.
+- cones: 3-4 with radii 1.8s, 1.4s, 1.05s and heights 2.2s; y 2.2s,3.2s,4.2s? total 7.5s. In portrait top maybe. s 0.8-1.4. background.
+- maybe a second trunk branch.
+`addOak(x,z,s,rot)`:
+- trunk cylinder .28 radius h 3.2*s.
+- 4 foliage icosahedron radius 1.4s positions around y 3.8s..5.4s.
+- optionally branch cylinder angled.
+- cast shadow.
+For animal tree, need branch. We can make oak and add branch cylinder. Branch start trunk at y=3, extends toward center. Use cylinder oriented between points via quaternion.
+Helper `cylinderBetween(a,b,r,mat)`.
+
+Tree placements:
+```
+addOak(-6.2, -1.0, 1.05); // owl tree
+addOak(6.4, -1.8, 1.1); // squirrel tree
+addPine(-9.2,-7,1.2), (-11,-14,1.35), ...
+addOak(-9.0,-10,1.0)
+...
+```
+At x ±6.2 and z -1, distance to camera 17, tree foliage at y 4-7 and x extends. In frame width half at z=-1 (16.5 dist) = 4.8. Wait camera horizontal half at depth 16.5 is 4.8, so x ±6.2 is outside frame! Important. The horizontal FOV is narrow, so trees at x±6 at z=-1 are offscreen. Camera at z 15.5, target z -6. At depth 16.5, half width 4.8. So owl at x=-4.2 may be near left edge, okay. Tree trunk x=-6.2 offscreen, branch extends into frame. That can work: only branch/owl visible at left edge, trunk offscreen. But we want forest framing. Trees further back at z=-10 (depth 25.5, half width 7.4) x±7 visible. Good. Cabin width 6 at depth 23 (z -7.6) half width 6.7, fits. Good.
+Need animals visible: branch at x=-4.0,z=-0.5 depth16, half width 4.7, owl near left edge at 1.6 unit from edge. screen x ~ (x/4.7)*270+270 = 40? x -4 -> screen 40. fine. Squirrel x=4.2 -> screen 511 near right edge. Maybe x=3.8 for 488. But then branch in front of cabin? Cabin right edge x=3 at z -5.2. At z 0, x 3.8 no overlap. Fine.
+Tree trunks offscreen but canopy leaves fill edges. Could also add foreground side tree at x=-5,z=8? Too close, trunk huge and might block. Periphery foliage okay.
+
+Actually we want both animal trees inside frame. Use oak at x=-5.4,z=-1.5 and branch extending to x=-3.8. Its canopy will be near left. Squirrel at x=5.0? Right half at depth 17 is 4.95, slightly cropped. Set x=4.5. Fine.
+
+Cabin appears centered around 270 horizontal.
+Path from door at z=-5.3 to front z=8, x maybe curve. Use flat rounded stones (CylinderGeometry radius .4, height .06, 7 segments) scaled, at z -4..7. Need color gray, vary. Each stone group. 14 stones. Since camera sees foreground path, nice.
+
+Sunflower placement:
+Field rectangle x [-5.2,5.2], z [-4.2,7.8]. But at z 7.8 depth 7.7 half width 2.25, x ±5.2 would be outside frame. So foreground flowers outside frame don't matter. Need field fills entire width even at z 7: x range [-2,2] visible. Place x across ±6 and z. For z > 5, maybe x ±2.5, but edges cropped. Fine.
+Avoid path: if |x - pathX(z)| <0.55 skip. Path maybe x = 0.35*sin((z+4)*0.45). Use function.
+Avoid rabbit/stump area if x 1.8..3.6, z 1..3.5.
+Avoid camera position? Camera z15, outside.
+Need ensure not hiding cabin door too much. Flowers max height 1.4, camera y 3.5, so line of sight to door y 1 maybe could be blocked by flowers at z 0 y 1.4. Foreground flowers in front of door might cover lower door. But that's natural. Keep gap around path. The sunflower field should be in front. Fine.
+Maybe arrange clusters on left and right of path, denser sides.
+
+Generate each flower group:
+```
+const height = rr(0.75,1.55)*scale;
+stem radius .025;
+head size .35-.55;
+stem green
+leaves 2 custom plane shape at y h*0.5, rotated.
+head plane map; material shared? Use one material. If different head sizes, mesh scale.
+```
+Set group position. Store phase, height, lean, head, leaves, basePos.
+Head plane orientation at render:
+```
+head.position.y = h
+const target = new THREE.Vector3(cam.position.x, cam.position.y*0.75, cam.position.z)
+head.lookAt(target)
+head.rotateZ(phase + sin(t*.8+phase)*.06)
+```
+But parent group has rotation z lean. Since head child of group with group rotation z, lookAt handling. Could avoid group rotation, set stem only via group? Simpler create flower group at base, stem mesh with rotation z? Head separate group at (0,h,0), no parent rotation. Leaves too. Store head. Head lookAt camera after t. Ensure `head.rotation` reset each frame via lookAt.
+Maybe head should face camera with slight downward/upward. Fine.
+- sway: group.rotation.z = sin(t*0.9+phase)*.035 + lean.
+- head world position shifts if parent rotates, but `lookAt` with world target subtracts parent's world transform? Object3D.lookAt implementation uses world position and parent quaternion. It should work. Even easier set head quaternion from camera directly? We can compute:
+```
+head.quaternion.copy(cam.quaternion); 
+```
+in world? If parent rotated, local quaternion needs cancellation. Better use `head.lookAt(...)`, works.
+- Add center sphere? Maybe use small CircleGeometry dark at front slightly. But texture already. Add a tiny dark disk plane at z .01 to give thickness? The plane itself has center. Fine.
+- Add leaves as ShapeGeometry (leaf shape) with double side. Use shared leaf geometry. 2 per flower. Rotate y random, position y h*0.45, z etc. Could avoid per-frame.
+
+Weed grass instanced:
+- Need place but not on path. Use 2200. For each choose x [-6,6], z [-4,8.2]. Exclude path width .35? path is stone; grass can surround. Use if abs(x-pathX(z))<0.45 and z<7 then skip. Rabbit area skip. Also around cabin? z>=-4.2 only so front. Could place outside field too, but flowers field enough.
+- Set color via instanceColor: HSL green variations.
+- Use dummy matrix.
+- `grassGeo` custom 3 blades 0.35 tall. Need compute normals? MeshStandardMaterial flatShading maybe. Geometry normals computed.
+- `frustumCulled=false`? Instanced bounding sphere perhaps compute. Set.
+- Add another InstancedMesh for taller weeds maybe 300 with different geometry.
+- Wildflowers: 80 instances of tiny sphere or plane with colors. Could use InstancedMesh SphereGeometry 0.03, 8,6 at y .18. SetColorAt to white/yellow/purple. 1 draw. Place among grass. Nice.
+
+Fence? no.
+
+Bushes:
+- 10 low foliage blobs around cabin base and field edges, dark green. Use icosahedron. Maybe scale .8. Add near foundation.
+
+Mushrooms:
+- A few red-cap mushrooms near path, cylinder stem + sphere cap + white dots (small spheres). 5 groups. Detail.
+
+Rocks:
+- 8 rocks low poly around field. Gray.
+
+Butterfly geometry:
+Create wing shape:
+```
+const shape = new THREE.Shape();
+shape.moveTo(0,0);
+shape.bezierCurveTo(0.12,0.16,0.22,0.14,0.23,0.05);
+shape.bezierCurveTo(0.24,-0.04,0.13,-0.1,0.02,-0.04);
+```
+Maybe one wing with upper and lower lobes. Then ShapeGeometry. Scale around .18. Use MeshStandardMaterial color, emissive, side double. Attach left at x=-0.01? To make wings open, rotate y ±. A wing shape lying in XY with hinge at x=0; left wing mirrored scale.x=-1. For right wing, mesh, left wing clone with scale.x=-1. Flap rotates around y. Body vertical along y maybe. Since butterfly in flight, orientation can be horizontal-ish. We can set group rotation x? Let's set body along z? Hmm.
+
+Simplest visual: group contains body cylinder along z? Plane wings lie in XZ plane horizontally; from camera above-ish you'd see them. But camera is slightly above butterflies (y 1.5, cam y 3.5), so horizontal wings visible. Flap around z or x. Body along z. Put wings as ShapeGeometry in XZ plane: define shape in XY, then rotate x=-PI/2 to lay flat. Hinges at x=0. Both wings extend left/right, body along z axis. Flap rotation around z? For left wing, rotate around z upward: left wing rotation.z=flap, right=-flap. But since geometry rotated x=-PI/2, local rotation z lifts. Yes. Group yaw along flight direction. Camera sees wing tops at shallow angle. Existing vertical wings more visible. Vertical wings facing camera show full shape. Let's do vertical butterfly: group with body along y (tiny cylinder), wings in XY plane at z=0, flap around y axis so they open/close toward camera. Wings visible from front when nearly flat to camera. The butterfly group can be rotated to face camera direction? For a randomly flying butterfly, wing plane tends vertical? Real wings can be any, but visually. Could orient group around y to direction, and camera sees them maybe edge-on. Better billboard group yaw to camera and wings open. Set group rotation y = atan2(cam.x-pos.x,cam.z-pos.z) perhaps face camera. But then butterfly always faces camera, okay. Wings flap around y (axis vertical) showing width changes. At t=0.5 maybe open.
+Alternatively use 3D wing shape with slight angle. Fine.
+
+Let's use wing shape in XY, body along y, group at position. Set group quaternion Y rotation toward camera each frame (billboard y). Then left wing rotates y = +flap? The left wing at x negative; rotate around y causes it to swing back/forth; visually width shrinks. With two sides mirrored, yes. Flap = 0.5+0.5*sin(t*10) maybe. wings at ±35° open. If camera exactly along +z and wing plane initially XY, good. Group rotation y to face camera ensures.
+- Wing colors and patterns maybe add small spots? Could use material color only; enough at 0.2.
+- Body black cylinder along y, antennae maybe not needed.
+
+Bees:
+- group body SphereGeometry scaled 0.075,0.07,0.12 along z. yellow with black stripes: 2 small torus? TorusGeometry radius .06,tube .015, 6,12, oriented x? Around z axis? A torus lies in XY plane by default, around z direction; body along z. Great: torus at z -0.03 and +0.03, scale maybe, black. Wings translucent white planes, flap. Facing direction along movement; billboard not needed.
+- Path orbit around flowers with speed, bob. Use `group.rotation.y = ...` and wings rotations z.
+
+Weather logic detail:
+Define `phase = ((t % 24) + 24) % 24;` then:
+```
+const cloudIn = smoothstep(2.2, 4.2, phase);
+const mistIn = smoothstep(5.8, 8.4, phase);
+const clearOut = smoothstep(12.5, 15.5, phase); // mist recedes
+const sunUp = 1 - cloudIn? 
+```
+But at t=8, phase=8, mistIn=~1. Then for phase>10, stays mist until 13. We want maybe cycle:
+- 0-2 sunny
+- 2-4 cloud
+- 4-6 cloud
+- 6-8.4 mist
+- 8.4-12 mist
+- 12-15 clearing
+- 15-20 sunny
+- 20-24? hmm
+Could make weather weights using smooth windows then renormalize:
+```
+const sunnyW = 1 - smooth(2,4,phase) + smooth(14,17,phase)? 
+```
+But beyond 17? cycle ends at 20. Let's define cycle 20:
+0-2 sunny
+2-4 transition to cloud
+4-6 cloud
+6-8 transition to mist
+8-12 mist
+12-15 transition back sun
+15-20 sunny
+At t=8 exactly full mist, good. At t=4 full cloud. At 0.5 sun. Loop 20.
+Weights:
+```
+const cloud = smooth(2,4,p) * (1 - smooth(6,8,p));
+const mist = smooth(6,8,p) * (1 - smooth(12,15,p));
+const sun = 1 - cloud - mist; // but cloud+mist can overlap? no by construction maybe.
+```
+At p=8: cloud smooth(2,4)=1 * (1-smooth(6,8)=0)=0; mist=1*(1-0)=1. Good. At p=13: mist=1*(1-smooth(12,15)=.74)=.26; sun .74. Fine.
+At p=4 cloud=1; mist=0.
+Need maybe cloud lingering after 8? Could not.
+Maybe weather transitions too fast (2 sec). Story at 0.5 sun, 4 cloud, 8 mist. Good.
+But if user views t=0.5 and 4 and 8, yes.
+
+However at p=8 full mist could be too washed. Set fog near 12 far 58; sky bottom similar. Trees at 35 distance fog factor (35-12)/(58-12)=.5, cabin 23 -> .24, recognisable. Ground foreground clear. Add low mist. Perhaps.
+At full mist, sun intensity .35, hemi 1.2, exposure .98. Scene colors muted. likely fine.
+
+Maybe instead at 8 almost full mist but fog far 70. We can inspect.
+
+Colors interpolation:
+```
+const sunTop = new Color(0x54a3dd)
+sunBot = 0xdceef5
+cloudTop 0x8597a4 cloudBot 0xc7d1d6
+mistTop 0xa7b6bd mistBot 0xdfe6e8
+skyTop = sunTop.clone().lerp(cloudTop, cloud).lerp(mistTop, mist)
+...
+sun.color = warm lerp cold
+sun.intensity = 2.4 - 1.7*cloud - .5*mist
+hemi intensity = .85 + .35*cloud + .35*mist
+fill...
+scene.fog.color bottom-ish and near/far.
+```
+Need fog when mist plus even sun some.
+`fog.near = 26 - 10*cloud - 14*mist` (26,16,12), far = 95 - 25*cloud - 35*mist (95,70,60). At mist near12 far60.
+Renderer exposure 1.05 - .05*cloud + .03*mist.
+Sky glow uniform = 1 - cloud*.9 - mist*.95.
+Cloud material opacity = .09 + .55*cloud + .72*mist? In mist clouds white. Also color lerp white to gray.
+Need make sun visible at t=0.5: glow with disk. Sky sun dir. At t=0.5 cloud 0, mist0. Good. Could add sun rays via sprite? Shader halo enough.
+Cloud formations near sun maybe.
+
+Add weather-reacting things:
+- Window glow stronger in cloudy/mist (emissiveIntensity 1.2+ something), lantern stronger. Nice.
+- Fireflies maybe visible in mist? Could add 15 small points glowing, driven by t, visible more in cloudy/mist. But extra unseen maybe. Could add a few floating light motes.
+
+Need maybe animate cabin smoke and chimney. Smoke sprites created independent, positions based phase and t:
+```
+for i 16: p = ((t*0.55 + i/16*life)%1)
+pos x=2.1+sin(...)*.25*p, y=6.1+p*3, z=-1.2+cos... 
+opacity = .25*(1-p)*(...)*(0.7+.3*mist) maybe.
+```
+Since group cabin at z -7.6, local +0. Need world y 6.1..9.5. These might be visible behind/above roof. In mist, blend with clouds. Good.
+- Sprite material fog true maybe; but sprites will fog. Fine.
+- Scale grows .5..1.8.
+- At t=0.5, a bit of smoke.
+- Need use clone material per smoke for opacity. yes.
+
+Camera:
+Need possibly dynamic camera subtly follows weather? Could static for consistency. Requirement scene transform not camera. Use minor breathing:
+```
+const camX = 0.35*Math.sin(t*0.11);
+const camY = 3.55 + 0.06*Math.sin(t*0.17);
+const camZ = 15.6 + 0.2*Math.cos(t*0.09);
+cam.position.set(camX, camY, camZ);
+cam.lookAt(0.1, 3.2, -6.0);
+```
+At t 0.5/4/8 shifts subtle. Fine.
+But sun direction in sky shader is world direction. As camera moves little, okay.
+Could be a "dolly" over time going slightly closer for mist to maintain. But simple.
+
+Need ensure viewport adapts if resized, maybe resize listener updates renderer/camera. In screenshots 540x960. Since global W/H set at load. Add resize to 540 etc. Good.
+On resize, render current t? Need store lastT and call render. renderFrame with lastT. But that's a side effect, fine. Not necessary.
+
+Potential issue canvas with CSS overlay, screenshot includes overlay. Good.
+
+Need maybe `window.__ready = true;` after init and initial render. Keep exactly.
+
+Now implement. Big code. Before writing, maybe use existing code adapted but easier write from scratch.
+
+Let's establish scene values:
+- camera target perhaps y=3.0,z=-6.5.
+- cabin group at z=-7.8, roof ridge top y=5.5. On screen vertical: camera y3.6 z15.5, target 3.0 z-6.5, direction slight down. Cabin top y5.5 at z-7.8 dx? angle up atan((5.5-3.6)/23.3)=4.7°, screen y = 480 - (4.7+0.5?) /52*960 ≈ 384. Cabin bottom y0 angle -8.8°, screen y 654. So cabin occupies 384-654 =270px, middle. Great. Flowers z 0 y1.2: angle atan((1.2-3.6)/15.5)=-8.8°, screen y 650. So sunflower tops align with cabin bottom. Actually flowers at z0 appear lower, good. Foreground z6 y1.4 angle -7.4°, screen y 620? Wait distance 9.5, dy -2.2 => -13°, screen y 700. Good. Foreground flowers occupy lower 300px.
+- Sky top from y 15 etc. sun visible.
+- Trees at z -10 y7: angle atan(3.4/25.5)=7.6°, screen 340. Foliage top. Good.
+- Trunk side x ±7 at z-10 screen x 270±7/(25.5*.286? half width=7.3) → left 10, right 529. Great.
+
+Animal positions:
+- owl at (-3.9, 4.8, -0.5), depth camera 16, half width 4.6, screen x = 270-3.9/4.6*270=41. y angle atan((4.8-3.6)/16)=4.3°, screen 386. So owl at left edge mid-upper. It may be visible. Perhaps move x=-3.5 => screen 65. Branch from trunk offscreen x=-6.2 to x=-2.9 at y4.4. Owl at -3.55. Branch appears left. Good.
+- squirrel at (3.7,4.0,-1.5), depth17, half4.86, screen x 476, y angle atan(.4/17)=1.3=>450. Maybe visible right. Good.
+- flower field will be around lower half.
+
+Maybe owl should be bigger, group scale 0.8. At 16 dist, 0.7 height*47px/unit=33px. Good.
+
+Tree trunks at x=-6.2 z=-1.0 will be outside screen at depth16.5 half4.7, so trunk not visible, only branch. Perhaps add nearby trunk at x=-4.8 z=-4.5 (depth20 half5.7, x screen 43) visible left, branch to owl. Better. Use tree trunk at (-5.6,-3.8) depth ~19.3, half5.5, screen x 0? x=-5.6 just off. Hmm. (-5.0,-4) gives screen 23. Could show trunk left. Branch to -3.5 y4.5. Great. Foliage at x~-5 can be in frame. Let's set owlTree at (-5.4,-4.2), trunk visible at left edge screen maybe 20, canopy. Owl at (-3.5,4.55,-1.8), branch from trunk at (-5.4,4.2,-4.2) to (-3.1,4.35,-1.7). Branch points out forward. Need cylinderBetween. Owl resting at (-3.5,4.75,-1.9), distance 17.5. Screen x 270-3.5/4.95*270=79. y angle atan(1.15/17.5)=3.8° => 390. Nice.
+Squirrel tree at (5.6,-4.7), trunk screen ~541 (edge). Branch to (3.7,3.7,-2.0). Squirrel at (4.0,3.9,-2.1). Screen x 270+4/5.1*270=482. y angle .3/17.6=1°=>472. Maybe overlapping cabin roof right? Cabin roof right edge at x3ish y4.8; squirrel at x4, z-2 is to right. Good. But branch maybe over roof edge. Fine.
+
+Maybe one animal kind on branch not clear at 540. Add bird perched on owl tree higher? Could add small bird on branch. But user asks some animals; visible owl + squirrel + rabbit enough. Add bird on roof also.
+
+Trees:
+1. owl oak (-5.4,-4.2,s=1.0). Ensure canopy not cover owl? Branch extends.
+2. squirrel oak (5.6,-4.7,s=1.05).
+3. large oak behind left (-9.5,-12,1.3)
+4. pine (-12,-9,1.2)
+5. pine (-8,-18,1.45)
+6. pine (-3,-21,1.6)
+7. pine (2,-23,1.65)
+8. pine (7,-19,1.5)
+9. oak (10,-14,1.25)
+10. pine (12,-8,1.1)
+11. oak (-13,-19,1.3)
+12. pine (-16,-14,1.4)
+13. pine (15,-16,1.3)
+14. foreground bushes.
+Need maybe x ±10 at z -10 visible only if within half width 7.4, not. Background trees at z-16 half 9.0, x ±10 partly. Good. It's okay.
+
+Add little conifer at far left behind flowers maybe x=-5.8,z=2? Camera depth13.5 half3.9, offscreen. Fine, adds depth maybe not visible.
+
+Foliage placement algorithm with rng. Need avoid all tree draw calls too high: 20 trees * 4 =80. Fine.
+
+Tree leaf color vary using seeded rng.
+
+The owl tree should have leaves behind owl for contrast. Add foliage blobs around y5.5..7, not at branch. Good.
+
+Branch helper:
+```
+function makeBranch(a,b,r,mat){
+ const dir = new THREE.Vector3().subVectors(b,a);
+ const len=dir.length();
+ const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r*.7,r,len,7),mat);
+ mesh.position.copy(a).addScaledVector(dir,.5);
+ mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
+ ...
+}
+```
+Cylinder default along y. good.
+
+Maybe tree trunk with lower branches.
+
+Stone path: path center x function:
+`pathX(z) = 0.55*Math.sin((z+5)*0.32) - 0.15`? At z=-4, near door x=0. Need path x=0 at z -4 and maybe 0.4 at z7. Use `0.65*Math.sin((z+4.2)*0.22)`; at z=-4 ~0; z=7 ~0.6. Fine.
+- Stones flattened cylinders radius .42, color variations, z every .9 from -4.2 to 8.0, x path + small jitter. 15 stones. Each separate material? shared 3 materials. Rotation y random.
+- Add side pebbles maybe not.
+
+Flower positions in x range ±6 but z-dependent cropping. Since field needs fill frame. Better place in bands:
+z [-3.8,7.6], x[-6,6]. 55 flowers. Some outside view but add depth. Need reject path gap width .55. Also avoid rabbit stump. Add flowers possibly behind camera? no.
+Need density enough: visible region ~ approx 30 flowers. Maybe 70. Each 4 meshes -> 280. Fine.
+Actually flower at z=-3 near cabin and x ±5 maybe offscreen. Fine.
+Use scale according to z? No.
+
+Flower head should maybe face +z/camera slightly with angle. Add `head.lookAt(camera.position)` in render gives all face current camera, natural sunflowers turn to sun? Actually toward camera. Cute.
+The head texture plane has alpha. To avoid disappearing at side? Camera front. good.
+
+Bees positions: orbit around center flowers:
+```
+cx = [-2.5, 1.4, 3.2, -1.8, ...]
+cz = [1.5, 4.8, 2.2, 6.2]
+rad .7-1.4, speed .9-1.8
+y = 1.0 + sin... .2
+```
+At z near 6 depth 9, screen larger. Body 0.12 => 6px, with wings maybe 12px. Visible as small yellow. Add 10.
+Butterflies at radius 1.2-2.5, y 1.2-2.4. size 0.35-0.5 => 20px. Colors bright. 9.
+
+Wildflowers: 120 instanced tiny spheres white/yellow, y around .25 and x,z field. They might be visible as dots. Nice.
+
+Mushrooms near path x=-1.3,z=2.5 maybe. But flowers could overlap. We can just place outside flower dense areas, e.g. at x=-3.8,z=3.2 (but likely flowers). Put near cabin foundation / edge, z=-4 maybe. Add 5 with clear radius? Not critical.
+
+Rabbit on stump:
+- stump at (2.8,0,2.9), cylinder r .38 h .45, wood.
+- rabbit group at y=.45. Scale perhaps .9. Body ellipsoid .28x.35x.25 at y .28, head .2 at y .58 z .05, ears 0.45 long at y .85. Overall 1.0. At distance 12.6, 47*scale? px per unit ~960/(2*12.6*.488)=78; 1.0=78 px. Great.
+- face left (-x). Build head maybe x=-0.1? We can rotate group y=-0.35.
+- eye black. Tail white sphere. Legs.
+- animate ears and head? group position fixed, ear rotation z slight. Fine.
+
+Bird on roof:
+- ridge at y5.35, z? Bird should perch on ridge y5.5, z=-7.8. from camera distance 23, px per unit 42, size .3 =>13px. Maybe too small. Could add a bird on owl branch instead at (-3.1,4.8,-2.0), size .3 =>14px. Some detail. Or on porch railing closer (z=-4.8) size .35 =>17px. Add bluebird on porch rail at x=1.8,y=0.9,z=-4.8? porch front maybe z=-4.8. Great. Visible near door. But "树上有一些小动物": owl and squirrel enough. Add bluebird on roof for charm; not critical.
+Maybe put bird on fence? no.
+
+Could add two little birds on roof ridge, one animated hopping. Nice.
+
+Cabin porch:
+Cabin group at z=-7.8, front z=+2.3 => -5.5. Porch deck extends z=3.3 => -4.5. Path starts -4.2. Porch at y .2. Steps at z=3.9? Add.
+- Posts maybe x±1.7, z=3.0, height 2.5, y 1.45. Add roof awning box 4.2x0.14x1.5 at y2.7,z3.0. Nice porch cover under gable? But front roof overhang may overlap. Add small thin awning. Windows and door height 2.05, eaves at 3.2, posts y1.5. Good.
+- Lantern attached to post x=1.65,z=3.1 y2.2.
+- Add porch rail? Might block. Keep simple.
+
+Cabin color: warm wood.
+
+Door at z=2.33, y1.05, front. Porch deck top y=.4, door bottom y=.2 maybe. Use door center y=1.3 height 2.0, bottom .3. Good.
+Body on foundation .4 high; base y maybe .4, body center 1.9? Let's define:
+- foundation box 6.2x0.45x4.8 center y .225
+- body center y=2.0, height 3.2 => bottom .4 top3.6.
+- roof base at 3.6, ridge5.8, width 3.4 => slope 4.0.
+- cabin top 5.8.
+Adjusted camera target y3.4 maybe. Fine.
+- door center y1.4 height 1.95 bottom .42 top2.37.
+- windows center y2.25 height .9.
+- front z=2.3.
+- porch deck center y .35 height .28 top .49, z 2.95 depth1.4 from 2.25 to3.65.
+- step at z3.8 y .18.
+- awning at y2.95? Door top 2.37, awning at2.85. Posts from deck .5 to2.85 at x±1.65,z3.4. Good.
+
+Roof panels: at y=4.7? body top3.6, ridge5.6 (height2), half width3.4, slope3.94, center x ±1.7, y4.6. good.
+Chimney at x2.2,z=-1.4, box .7x2.6x.8 center y=4.6 => top5.9, bottom3.3. It intersects roof. Add cap.
+- smoke start local (2.2,6.2,-1.4).
+
+Add roof front gable triangle plane at z=2.32 y3.6? shape points (-3.4,0),(3.4,0),(0,2). Add triangle at y3.6. But body top at3.6. Good. Mesh position y3.6,z2.32. For back z=-2.32? geometry needs rotate y? Shape double side maybe use material side double. Use one triangle front and one back rotated y PI.
+- logs/beams: add corner vertical posts at x±3.0,z±2.25 boxes .28x3.3x.28 darker. Add horizontal bands maybe.
+
+Windows: MeshStandardMaterial emissive warm with map? Use simple color 0xffd28a emissive intensity 1.4. Add outer frame boxes. Crossbars. Add small planter under each with flowers? Could add box planter with green/red blobs. Nice detail.
+
+Door: planks via wood texture. Add hinges and handle.
+- house number? no.
+
+Chimney: stone texture.
+
+Path.
+
+Fog and background trees. 
+
+Now animals geometry details:
+Helper `sphere(r,mat,scale?)`.
+Owl group:
+```
+const owl = new THREE.Group();
+const body = new THREE.Mesh(new THREE.SphereGeometry(0.34,12,10), owlMat); body.scale.set(.9,1.15,.75); body.position.y=.33;
+const head = new THREE.Mesh(new THREE.SphereGeometry(.27,12,10), owlLightMat); head.position.y=.67; head.scale.set(1.05,.95,.9)
+ear cones at x±.15,y.9
+eye discs white spheres scaled flat at z .22, x±.1 y.68
+pupils black at z+.07
+beak cone at y.6,z .27 rotated x pi/2 (cone tip +z? Cylinder default y, cone tip is +y. rotate x pi/2 maps +y -> +z yes)
+wings flattened spheres at x±.28 y.3
+feet small orange
+```
+Group scale 0.85. Add subtle head rotation around y with sin(t). Need group store head.
+Owl position set in world, branch.
+Owl facing camera-ish; if group rotation y=0 faces +z (camera) good. Maybe rotate -0.15.
+
+Squirrel:
+```
+body sphere .2 scaled (1,1.2,1.5?) since sitting, head at y.4 z.1
+ears small cones
+eye
+tail group behind, chain of spheres at x? Use 4 spheres scaled .14, positions x=0? tail curling up behind.
+```
+Facing +z. Add acorn at front paws.
+- Since squirrel at x4, camera left, face rotate toward center (-0.3 rad).
+- Tail animate rotation z small.
+Body orange 0xc26a2e; belly lighter.
+
+Rabbit:
+```
+body capsule maybe Sphere .3 scale(1.1,1.1,1.2)
+head at y .45 z .18
+ears: CapsuleGeometry(0.055,0.38,4,8)?? Three r160 supports CapsuleGeometry. yes. Position y .8, rotate z ±.1, perhaps x? Ears vertical.
+eyes black at x±.09, z .28
+nose pink
+tail sphere at back.
+front paws.
+```
+Group scale .9. Stump at y .45. Rabbit feet on stump. Good.
+- perhaps ears twitch by rotation z.
+
+Bluebird:
+body sphere .13, head .09, beak cone orange, tail flattened cone/box, wing. Blue material. Position atop roof ridge y5.65,z? cabin at -7.8, roof ridge z maybe -7.8. World y5.7. Tiny.
+- Better on porch rail at world x=1.6,y=0.75,z=-4.6, visible bigger. But no rail. Add fence rail? skip.
+- Bird on branch near owl? Could add second bird on branch but confuse. Put bird on roof ridge, enough.
+
+Fireflies:
+Use Points with BufferGeometry positions and circular texture? PointsMaterial size .1 with additive, color warm. But positions animated require updating buffer each frame; pure. 20 points inside meadow, y 0.4-2.0. In sunny invisible? Set opacity based cloud/mist. Could add nice glow in mist. Use PointsMaterial transparent opacity 0.0-0.8, map glow, depthWrite false. Update positions using stored phases and t. 20 points. Great. Should not look like random. We can add but not essential. Maybe nice.
+
+Need postprocessing? No.
+
+Need also create some falling leaves? not needed.
+
+Potential concern all scene animations from t, but clouds material opacity also. Good.
+
+Pure function with mutable values derived from t. Ensure no call to Date/performance/Math.random. Search final file for these. Math.random absent. Date absent. performance absent.
+
+Need maybe avoid reading URL query time; fine.
+
+Let's write.
+
+We'll create `scenes/forest3.html`. Need maybe use exact import path. Good.
+
+Let's be careful with Three.js APIs r160:
+- `renderer.outputColorSpace = THREE.SRGBColorSpace`.
+- `CanvasTexture.colorSpace = THREE.SRGBColorSpace`.
+- `THREE.CapsuleGeometry` exists.
+- `InstancedMesh.setColorAt`; material vertexColors? For instanceColor, set `mesh.instanceColor.needsUpdate = true`, material doesn't require vertexColors maybe Three handles `USE_INSTANCING_COLOR`. I think yes if instanceColor set, defines set. Fine.
+- `MeshStandardMaterial` with flatShading.
+- `THREE.MathUtils.smoothstep`.
+
+Use Color clone to avoid allocate per frame? Some allocations okay. But renderFrame called a few times. We can allocate constant colors and temp.
+
+Potential issue sprite materials with transparent and alphaTest. Fine.
+
+Shadow performance: 2048. Use PCFSoftShadowMap. Good.
+
+Let's draft the code thoroughly. Might be ~1000 lines. Need use write tool. During writing ensure not too long? Tool can handle. I'll construct in chunks maybe write initial complete then inspect.
+
+Let's start with head, setup, textures. Then geometry. I'll generate code mentally and write all at once. But risk errors. Could write file in pieces via write then edits. One big is fine.
+
+Let's define utility:
+```
+const TAU = Math.PI * 2;
+const rand = mulberry32(SEED); // used only init
+const rr=(a,b)=>...
+const clamp...
+function smoothstep(a,b,x){ const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t);}
+```
+Be careful not shadow `t` in smoothstep? fine local x.
+
+Renderer:
+```
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(1);
+renderer.setSize(W,H);
+...
+document.body.appendChild(renderer.domElement);
+```
+CSS overlay inserted before script? Add div id vignette in body.
+
+Camera: `new PerspectiveCamera(52, W/H, .1, 240)`.
+
+Scene fog new Fog(0xcfdfe7, 26,95). Background maybe Color? Sky dome covers. Set scene.background = color maybe.
+
+Sky Shader:
+Vertex:
+```
+varying vec3 vDir;
+void main(){ vDir = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }
+```
+Since sphere at origin and camera inside, position direction local sufficient. But camera not at origin, sphere centered at camera? We add sky position at (0,0,0), radius 150, camera inside. Direction from camera not exactly position normalized but close. Better `vWorld = position` okay. Sun direction world. We can set sky.position.copy(camera.position) each frame? If sky centered on camera, fine. Add in renderFrame sky.position.copy(cam.position). But sky radius and fog false. Then vDir local position normalized. Good. Use uniform `sunDir`. 
+Fragment:
+```
+float h = clamp(vDir.y*0.5+0.5,0,1); // But lower hemisphere? sphere only visible above ground. Better h = max(vDir.y,0).
+vec3 col = mix(bottom, top, pow(clamp(vDir.y*1.15,0,1),0.7));
+float sd=max(dot(normalize(vDir), normalize(sunDir)),0.0);
+col += sunColor * (pow(sd, 900.0)*0.9 + pow(sd, 24.0)*0.16) * sunGlow;
+// horizon warm glow maybe
+gl_FragColor=vec4(col,1);
+```
+Need tone mapping? ShaderMaterial not tone mapped by default? toneMapped=true maybe shader compile? For ShaderMaterial, tone mapping not applied unless include tonemapping_fragment. Could include `#include <tonemapping_fragment>` and colorspace? In r160, ShaderMaterial output goes direct; need `#include <tonemapping_fragment>` `#include <colorspace_fragment>`. But these shader chunks maybe compiled only if renderer tone mapping. Could include at end. Let's include:
+```
+gl_FragColor = vec4(col,1.0);
+#include <tonemapping_fragment>
+#include <colorspace_fragment>
+```
+Works with Three ShaderMaterial? yes chunks available. However `gl_FragColor` in r160 still okay (WebGL2 compatibility?). Three injects define `gl_FragColor`? Standard examples use gl_FragColor. fine.
+No fog on sky.
+
+Sun uniforms colors.
+
+Cloud texture: function using rng. Must call before creating cloud sprites. Need maybe multiple textures:
+```
+function cloudTexture(seed, puffs=24, alpha=.55)
+```
+Use local mulberry32(seed), not global to avoid altering sequence? Either okay. Using local better. Same for all textures maybe use local seeds so order doesn't matter. But no need. I'll use local seeds for textures.
+Draw radial gradients white alpha. Base canvas 256. Also for mist maybe same.
+
+Sun integration not sprite.
+
+Clouds add:
+```
+const cloudTexes=[cloudTexture(101), cloudTexture(202), cloudTexture(303)];
+const clouds=[]
+for i<18:
+ const mat = new SpriteMaterial({map:..., transparent:true, opacity:.08, depthWrite:false, fog:false, color:0xffffff});
+ const s= new Sprite(mat);
+ const bx=rr(-22,22), by=rr(14,27), bz=rr(-46,-24), sx=rr(16,30), sy=sx*rr(.35,.5)
+ s.position...
+ s.scale...
+ clouds.push({s,bx,by,bz,ph:rr...})
+```
+At x ±22 at z-35 (depth50) half width15 => many offscreen. Could x[-15,15] for z -30. But cloud width covers. Fine. Maybe distribute [-18,18].  18 clouds enough.
+Could purposely create a cloud in front of sun at x -8,y20,z-30 to obscure at cloud phase. But cloud sprites are at z -30, with sun sky direction. Overlap. Good.
+- Cloud material color updates to gray based on weather but same color.
+- At mist, cloud opacity high but fog false; maybe too bright white. tint gray.
+
+Low mist:
+`mistSprites` 22, material map cloudTex, opacity 0, color 0xdde8ea, depthWrite false, fog false. positions at x[-14,14], y [.35,2.1], z[-16,8]. scale x 8..16, y 2..4. Maybe sprite intersects geometry; depthTest true means trees occlude when behind. depthWrite false. Fine. Some in foreground z 6 with opacity could veil. Set z mostly -16..-2, maybe 4 foreground. Use base positions.
+Animate x drift with sin(t*0.02+ph)*2.
+
+Ground:
+```
+const groundMat = MeshStandardMaterial({map:grassTexture(), color:0xffffff, roughness:1});
+const ground = new Mesh(new CircleGeometry(90,64), groundMat);
+rotation x=-PI/2; receiveShadow
+```
+Texture repeat 26 maybe. Need `map.anisotropy = renderer.capabilities.getMaxAnisotropy()` maybe 4. Fine.
+
+Slight terrain patch? Add large flattened sphere behind at (-15,-3,-35) etc? Not necessary.
+
+Add forest floor color transition maybe ring of dark moss? no.
+
+Ground detail rocks.
+
+Cabin:
+Let's code with helper `box(w,h,d,mat,x,y,z,parent)`.
+Materials:
+- woodTex = plank texture, repeat(2.4,1.2). Use one material.
+- roofTex repeat(2,2).
+- stoneTex repeat(1.5,1.5).
+- darkWood.
+- windowMat emissive.
+- lantern point.
+
+Cabin group position z=-7.8.
+- foundation.
+- body.
+- corner beams.
+- gables.
+- roof panels and ridge.
+- chimney.
+- door + frame + knob.
+- windows ×2 plus crossbars and shutters? Add shutters dark green for fairytale feel. Maybe shutters wood.
+- porch deck, steps, posts, awning.
+- lantern.
+- log pile next to cabin outside? Add world near x=-4.2,z=-4.8.
+- flower boxes under windows.
+
+Need smoke sprite positions relative to cabin? Add to scene world for easier. create around world anchor x=2.2,z=-9.2 (cabin group z -7.8 + local -1.4 = -9.2). This is behind roof ridge? smoke visible above. good.
+
+Trees positions & function:
+Oak foliage colors. Need use `SphereGeometry` or Icosahedron? `IcosahedronGeometry(1,1)` gives more rounded with 80 faces. Use `DodecahedronGeometry(1,0)` or Icosahedron detail 0 (20 faces) stylized. Blobs can look low poly. Use detail 1 for main. 20 trees * 5 blobs * 80 triangles okay.
+- Create `makeOak(x,z,s,rot)`:
+```
+const g = Group;
+trunk = CylinderGeometry(.18*s,.32*s,3.4*s,7); y=1.7s.
+g.add
+for 5 blobs choose offsets, radius 1.1-1.5s; mat random.
+```
+Need maybe no global rng consumption in render. Init only.
+- add branch meshes maybe a couple angled from trunk at y2.8s.
+- trunk at tree world position. Color.
+- For owl tree, need branch world positions easier if create custom group with branch. Function returns group and tree base. Branch can be child with local coordinates. But branch positions for animal placement can just compute world.
+
+Set owl tree: group at (-5.4,0,-4.2), scale 1.0. Branch local from (0,3.7,0) to (2.0,3.95,2.2)? world branch endpoints (-5.4,3.7,-4.2) to (-3.4,3.95,-2.0). Owl sits at around (-3.65,4.2,-2.15). This is a bit close to cabin left edge? cabin left x=-3.1, z front -5.5; at z -2, x -3.65. Fine. Screen x at depth 17.5 half5.1 => 77. Great.
+But branch should extend out of canopy and visible. Good.
+Tree canopy should not occlude owl. Place foliage at y5.5+, x maybe -1.5..+1.5 local, but if canopy extends to x=-4.7 maybe above owl. Fine.
+- Owl group pos (-3.65,4.33,-2.1), scale 0.9, facing y maybe 0.25.
+
+Squirrel tree at (5.6,0,-4.7), branch local from (0,3.0,0) to (-1.9,3.25,2.1) => world (3.7,3.25,-2.6), squirrel pos (3.95,3.5,-2.7). Screen x depth 18.2 half5.3 => 471. Good. Branch/trunk may be right edge. fine.
+
+Add animal branch materials.
+
+Trees positions:
+```
+[
+ oak -5.4,-4.2,1.05 owl
+ oak 5.6,-4.7,1.1 squirrel
+ pine -8.5,-10,1.25
+ oak -11.0,-15,1.2
+ pine -6.0,-19,1.45
+ pine -1.5,-21,1.6
+ pine 3.0,-22,1.5
+ oak 8.0,-18,1.25
+ pine 11.0,-13,1.15
+ pine 14,-8,1.0
+ oak -14,-20,1.2
+ pine 16,-17,1.2
+ maybe oak 10,-22
+]
+```
+At x ±11,z-15 depth30 half8.8, visible.
+Add a few background silhouette trees at z -28, x ±10, scale 1.6.
+Need not overdo.
+
+Grass around tree base? Instanced grass could extend to ±16 maybe. We have field only. Ground texture enough.
+Could add instanced ferns around forest edges, maybe no.
+
+Sunflowers:
+Let's calculate near flower positions. Place via bands:
+For i 0..64:
+- Choose z = rr(-3.9,7.6)
+- Choose x = rr(-5.7,5.7)
+- Path gap check.
+- Maybe avoid at x around 0.3 and z<2? path.
+- Rabbit zone check.
+- Also don't place too close to another? Could use grid? Simpler random but if repeated overlap, fine.
+- Scale = rr(.75,1.25)*(0.85 + .15*SOMETHING). Height = rr(.85,1.55)*scale? That could be 1.9 too high. Let's height = rr(0.85,1.45) * (0.85+0.3*scale). good.
+- Head size = rr(.42,.6). head plane geometry 1x1 scaled.
+- Stems.
+- Add leaves using leaf shape geometry. Use shape perhaps x 0.6 y0.3. We need orient plane somewhat horizontal. Use PlaneGeometry(0.36,0.18) with leaf texture? ShapeGeometry better. Define leaf shape in XY, rotate x -PI/2 to lie horizontal, maybe rotate y. Position at y h*.45 and z .05.
+- Flower head material shared with map. Use one `MeshStandardMaterial` alphaTest .45 side double, roughness .8, emissive slight, color white. `depthWrite:true`.
+- Add a dark green backing disk plane? Not.
+- Set head.scale.setScalar(headSize).
+- Store `{group, head, h, phase, lean}`.
+- Call render to face camera.
+
+Potential issue head plane dimensions 1 and texture petals fill to .98. scale .55. good.
+
+Add some closed buds? no.
+
+Grass geometry:
+```
+function makeGrassGeometry(){
+ const pos=[];
+ for (let i=0;i<7;i++){
+  const a = i/7*TAU + ...;
+  const w=.035, h=rr(.26,.55) -> but geometry random at init.
+  const bx=Math.cos(a)*.05, bz=Math.sin(a)*.05;
+  const tipx=bx+Math.cos(a)*.09, tipz=bz+Math.sin(a)*.09;
+  positions triangle: (bx-w*sin, 0, bz+w*cos), (bx+...,0,...), (tipx,h,tipz)
+ }
+ const geo = BufferGeometry; setAttribute position; computeVertexNormals();
+}
+```
+Blade plane may be double side. Use 5 blades.
+Instanced 2600. Place x,z field and edges. Exclude path central width .28? Grass can grow around stones. skip if on path (dist <.3) and z<7.
+Scale rr(.65,1.5).
+Instance colors using `new Color().setHSL(0.23+rr(-.03,.04), .45+..., .25+.12)`.
+- material color white, roughness1, side DoubleSide. Maybe vertexColors? `setColorAt` should work. We may need `material.vertexColors = false`? For instanced color, Three injects. I think yes.
+- castShadow false, receiveShadow true.
+- Add a second instanced layer of taller, darker grass maybe 600. Could reuse geometry with bigger scale. Same mesh can't have different; create `weeds=InstancedMesh(geo,mat,700)`, scale 1.2-2.2, in back edges. Good.
+
+Wildflowers:
+- Instanced `SphereGeometry(.035,6,4)` with material StandardMaterial({vertexColors?}) no, set color.
+- 120; positions across field, y rr(.18,.35). Add tiny stem? no. Dots of white/yellow/lilac. Good.
+
+Ferns/bushes:
+- 12 bushes near cabin and edges: Group of 3 icosahedron blobs scaled low. Add to scene. Materials dark green.
+- These add detail around foundation.
+
+Stones:
+- path stones as cylinder radius 0.35-0.5, height .05. Place with slight offset. color gray. Could use one material.
+- maybe 16.
+
+Rocks: 6 dodecahedron at edges.
+
+Mushrooms:
+- 6 near cabin/rock, red caps. Stem cylinder, cap sphere scaled. Add white dots maybe 3 small spheres each? 6*4=24 draw calls. Maybe cap texture too much. Keep 5 with 2 dots each? okay.
+- Actually can skip.
+
+Butterflies:
+Use wing shape geometry public.
+```
+const wingShape = new THREE.Shape();
+wingShape.moveTo(0,0.02);
+wingShape.bezierCurveTo(0.10,0.18,0.26,0.18,0.28,0.05);
+wingShape.bezierCurveTo(0.30,-0.04,0.20,-0.14,0.10,-0.10);
+wingShape.bezierCurveTo(0.05,-0.07,0.02,-0.02,0,0.02);
+const wingGeo = new THREE.ShapeGeometry(wingShape, 8);
+```
+Scale maybe 0.9. Butterfly group:
+- body: CapsuleGeometry(.012,.06,3,6)? maybe cylinder along y. `CylinderGeometry(.012,.018,.12,5)` y.
+- left wing mesh same geometry at x=0? Its shape extends +x; we want right wing extends +x. Left wing clone scale.x=-1, position x=0. Both at z=0.001. Use `wing.position.z=0.01`.
+- For group facing camera, at each frame set quaternion? group.rotation.y = Math.atan2(cam.x-x, cam.z-z) (since default plane faces +z; camera direction). Add pitch maybe.
+- flap = 0.25 + 0.75*abs(sin(t*8+phase))? Wing rotation y: left wing (mirrored) maybe positive? Let's think:
+  Right wing shape lies in XY, extends +x. Rotating mesh around y by +angle moves +x toward -z. Left wing extends -x, rotating around y by -angle also moves -x toward -z? To close wings toward camera? We just need symmetric flap. Set right.rotation.y = flap; left.rotation.y = -flap. With flap oscillating 0.2..1.1 rad. That makes wing planes angled; from camera, projected width shrinks. Good.
+- body color dark.
+- group scale rr(.8,1.2) maybe wing 0.3 wide after shape. Screen size at dist 10 = .6*78=47px! That's big. Wing shape x max .3, both sides total .6, scale 1 => 47 px. Butterflies in foreground would be giant. Set wing geometry 0.75 scale? Actually shape coords .3 width each => total .6 world units, a butterfly is ~0.1m; stylized but 0.6 would be huge relative flowers head .5. Need total width ~0.18-0.24. Scale shape mesh 0.4 => total .24. Or define geometry small. Better create geom with shape max .18 -> total .36, scale .65 => .23. Let's define shape coords x 0..0.18,y ±0.11. Then total .36, group scale .6 = .216. At 10 units dist -> 17px. Good. Some nearer => 20px.
+- `wingGeo` coords. Use material emissive.
+- positions around flowers: y1.0-2.0, orbit radius 0.8-2.2 around centers. At t .5 some around. 9.
+
+Bees:
+- Body ~0.12 long x width .08. At dist 10 => 10px. Good.
+- wings PlaneGeometry(.09,.05) white translucent double side. Oriented maybe horizontal. Body along x? We'll orbit group and orient along velocity. Body along z using sphere scale (.7, .7, 1.4) with sphere radius .07. Stripes torus z axis: torus radius .055, tube .015 -> visible. Torus geometry default around z, yes.
+- wings at x ±.04,y.04,z0, rotate z? Flap around z axis; groups. 
+- animate wing.rotation.z = ±(0.5+sin*0.5).
+- group rotation.y = heading + PI/2? Body along z, velocity tangent; atan2(vx,vz) gives yaw aligning +z to velocity. Compute derivative of orbit approximately. Could just spin group y = -a. Fine.
+- 10 bees.
+
+Animals:
+Implement.
+
+Fireflies:
+Maybe optional. Let's include:
+```
+const fireflyGeo = BufferGeometry positions 24*3; material PointsMaterial({size:.11,map:glowTex,transparent:true,opacity:0,blending:AdditiveBlending,depthWrite:false,color:0xffdf88,sizeAttenuation:true});
+const fireflies = Points...
+base arrays; update each render with x=cx+sin(t*.4+ph)*.7, y=.7+sin(...)*.3, z=...
+opacity = .8*(cloud*.4+mist*1.0)
+```
+In sunny maybe 0. At mist visible. Nice.
+
+Weather update:
+```
+const weather = {};
+function applyWeather(phase){
+ const cloud = smoothstep(2.0,4.0,phase)*(1-smoothstep(6.0,8.0,phase));
+ const mist = smoothstep(6.0,8.0,phase)*(1-smoothstep(12.0,15.0,phase));
+ const sun = 1-cloud-mist;
+ ...
+}
+```
+Wait phase 8: cloud=0,mist=1. p4 cloud=1. p0.5 sun=1. p16 sun=1. Cycle 20. Good. But sun factor at p4 0. On p7 cloud=1*(1-smoothstep(6,8,7)=.5)=.5, mist=.5. Good.
+Cloud opacity = 0.12 + 0.6*cloud + 0.45*mist. At p8 .57. Low mist opacity .25.
+Fog near/far use:
+`fog.near = 28 - 12*cloud - 16*mist; fog.far = 110 - 28*cloud - 48*mist` => mist near12 far62. Good. In sunny 28..110, forest visible. At cloud 16..82. At mist 12..62.
+`fog.color = mix(sunFog 0xcfe1e8, cloudFog 0xb9c7cc, cloud).lerp(mistFog 0xd6e0e2, mist)`. 
+Sky colors.
+Lights:
+`sunLight.intensity = 2.6*sun + .65*cloud + .35*mist` -> at cloud .65, at mist .35. Hemi `0.8 + .3*cloud + .35*mist`. Fill maybe .3.
+Sun color mix 0xffe6b8 -> 0xe6edf0.
+Hemi.color sky maybe mix.
+Ambient? Hemisphere enough. Add AmbientLight 0x404b45 0.25? Maybe.
+- Add `scene.environment`? no.
+
+Sun disk glow uniform: `skyMat.uniforms.sunGlow.value = 0.95*sun + .08*cloud + .0*mist;` maybe sun still dim visible faintly in mist. 
+Sky top/bottom color update.
+- Window/lantern: `windowMat.emissiveIntensity = 1.2 + .6*cloud + .9*mist;` This makes warm windows cozy.
+- firefly opacity.
+- cloud material opacity and color.
+- lowMist opacity.
+- Maybe sun light shadow not update? intensity yes.
+
+Weather phase at t: `phase = ((t % 20) + 20) % 20`. At 0.5,4,8 as desired. Note requirement t pure, modulo okay.
+
+Animation:
+- smoke, flowers sway, butterflies, bees, birds, animals, clouds, fireflies.
+- maybe path no.
+
+Smoke:
+- 16 sprites added to scene, each material clone. In update:
+```
+const life=4.5;
+for i:
+ const p = ((t*0.24 + i/16) % 1 +1)%1; // t*0.24 means one cycle 4.17 sec
+ const y = 6.2 + p*3.4;
+ const x = 2.2 + Math.sin(p*5 + i*1.7)*.28*p; // local world around cabin x
+ const z = -9.2 + Math.cos(p*4 + i*.9)*.3*p;
+ s.position.set(x,y,z);
+ s.material.opacity = .28*Math.sin(Math.PI*p)*(0.8+ .2*...) * (0.75+0.25*cloud+0.2*mist);
+ s.scale.setScalar(.5+p*1.8);
+```
+Cabin chimney world x=2.2,z=-9.2. Good.
+Maybe smoke blown right by wind: x=2.2+p*0.8.
+- Use fog true default.
+
+Cloud movement:
+`cloud.s.position.x = c.bx + Math.sin(t*0.025 + c.ph)*3.2;` and maybe y slight. Pure.
+At t=0.5 vs 4 vs 8 clouds shift a bit, not important.
+
+Flowers:
+```
+for f:
+ f.group.rotation.z = f.lean + Math.sin(t*1.0+f.phase)*.035;
+ const wp = f.head.getWorldPosition(temp); // after group update, but need updateMatrixWorld? getWorldPosition calls updateWorldMatrix(true,false). okay.
+ f.head.lookAt(cam.position.x, cam.position.y - 0.4, cam.position.z);
+ f.head.rotateZ(Math.sin(t*.7+phase)*.06);
+```
+But lookAt sets quaternion; then rotateZ local adds spin around head normal? okay.
+- Maybe head slightly nods `lookAt` target y cam.y - .2.
+- We can skip getWorldPos. `head.lookAt(cam.position)` and parent rotates. Works.
+
+Butterflies:
+```
+const a = b.phase + t*b.speed;
+x = b.cx + cos(a)*b.rad;
+z = b.cz + sin(a*0.9+...)*b.rad*0.7;
+y = b.y + sin(t*1.8+phase)*.18;
+b.g.position.set...
+b.g.rotation.y = Math.atan2(cam.position.x-x, cam.position.z-z);
+b.g.rotation.z = sin(t*.7+phase)*.08;
+flap...
+```
+Wait group position set then rotation y to camera; wing rotations local. Good. But group rotation.z tilts body; okay.
+- At t=0.5 some might be behind cabin? no.
+
+Bees linear orbit:
+```
+a = phase+t*speed
+x=cx+cos(a)*rad; z=cz+sin(a)*rad*.8; y=base + sin(t*3+phase)*.08
+group.rotation.y = -a maybe
+wings ...
+```
+No need billboard.
+
+Animals:
+- owl head rotation y = sin(t*.7+1)*.12; maybe whole owl slight bob? no.
+- squirrel tail rotation x? store tail group. `tail.rotation.z = sin(t*1.4)*.09`.
+- rabbit ear rotation z = ±.12 + sin(t*2.3)*.03. 
+- bird slight rotation.
+
+Camera update before flower lookAt.
+
+Resize:
+```
+window.addEventListener('resize',()=>{...; if(lastT!==undefined) window.renderFrame(lastT);});
+let lastT=0;
+```
+renderFrame stores lastT. fine.
+- `renderFrame` should clamp/accept t. Use Number.
+
+Need call `renderer.render(scene,camera)` after all updates. 
+- `window.renderFrame(0); window.__ready = true;`
+Set ready after some frames? WebGL render synchronous. Good.
+
+Need ensure overlay doesn't obscure. Vignette subtle.
+
+Let's write file.
+dsh: reasoning:
+Now write file. Need be extremely careful syntax. Let's compose.
+dsh: reasoning:
+Need inspect for bug: windowUnit uses matShutter before declaration. `matShutter` const declared after function but called before declaration? JavaScript temporal dead zone: function definition captures, but call `windowUnit(-1.9)` occurs before `const matShutter` declaration? Yes code:
+```
+function windowUnit(x) { ... matShutter; box(...matShutter...) }
+...
+windowUnit(-1.9);
+windowUnit(1.9);
+
+const matShutter = ...
+```
+This will throw ReferenceError when calling. Need move matShutter before function or calls. Also weird `matShutter;` line. Fix.
+
+Also owl head grouping code: `const owlHeadParts = owl.children.slice(2, 10);` unused. Fine, but head re-group condition: child y > 0.64 includes body? body y .36 no; belly .31 no; head .76 yes, ears .98, eye discs .79 etc, beak .70, wings .38, feet .02. Good. head group position 0.72; shift local by -.72. head/ears/eyes/beak. Fine. The `headParts` unused. Could clean.
+
+Critical: matShutter declaration. Move before windowUnit.
+
+Also bird position y=5.78 world; roof ridge world y? cabin group z -7.8, local roof ridge 5.63. y 5.78. good. z -7.8. bird on ridge center. good.
+
+Need check flower leaf geometry orientation; okay.
+
+Potential shader issue include colorspace chunk uses function maybe fine.
+
+Potential geometry `new THREE.CapsuleGeometry` exists in core? In Three r160 yes `CapsuleGeometry` is in `src/geometries/CapsuleGeometry.js`, exported. Good.
+
+Potential material `matWindow` emissive with color lit. Fine.
+
+`scene.background.copy` requires scene.background Color yes.
+
+`hemi.groundColor.setHex(...).lerp(new THREE.Color(...))` alloc each frame but okay. Could precompute, minor. Not pure issue (deterministic but creates). Fine.
+
+`owlHeadParts` unused. Fine but could cause no issue.
+
+`for (const child of [...owl.children])`: moves all y > .64. But body? okay.
+Then owlHeadGroup's children positions shift. Good.
+
+`headParts` unused. fine.
+
+`rabbit.children.forEach` checks `c.geometry.type === 'CapsuleGeometry'`. Instances of CapsuleGeometry `type` = 'CapsuleGeometry' likely yes. It includes ears and inner ears at y .94. Both rotate in same patterns with idx parity. Might override both inner/outer if same? It iterates all children, ears and inners both y .94. idx mod2 assigned. Fine. But setting inner rotation separate from outer might detach due different idx parity? Ears at child index 4? Let's count: body0 chest1 head2, then for sx -1: ear3 inner4 eye5; sx1: ear6 inner7 eye8, nose9, tail10 feet11,12. Inner and outer indices 3 and 4 -> different parity => rotate ±. They could separate slightly. It's only .025 rad. fine.
+
+But scene animal positions: Owl branch. owl at (-3.55,4.37,-2.05) standing on branch? Branch line from (-5.25,3.62,-4.0) to (-2.95,4.2,-1.55). At x=-3.55 corresponds t = (x+5.25)/2.3=0.739, y=3.62+0.58*.739=4.049, z=-4+2.45*.739=-2.19. Owl feet world y 4.37 (owl group includes feet y .02, scale .92) so bottom ~4.37, branch top 4.05+.12=4.17. Owl floats .2. Could lower owl to 4.2. Also owl group head etc. Need adjust position y to 4.18 maybe. Cube branch radius .12, center 4.05 top 4.17. owl feet bottom group y+0.02*0.92 ~4.39. Lower to 4.15 gives foot bottom 4.17. So owl y=4.16. Then screen slightly lower. Good. Let's set y 4.17.
+Squirrel branch at world from (5.45,3.08,-4.55) to (3.55,3.34,-2.35). At x 3.92 -> t .805, y3.289, z -2.78. Squirrel group y 3.48, feet? no feet y0.1, bottom 3.53? Squirrel body bottom 0.29 - .22*1.25? Body bottom .015? Actually center .29 scale y1.25 radius .22 -> bottom .015. So squirrel sits at group y+0.015=3.495, branch top 3.289+.11=3.4. Floats .1. Set squirrel y=3.38 -> bottom 3.395. good.
+We can adjust after first screenshot.
+
+Main bug matShutter. Let's edit.
+dsh: reasoning:
+Now maybe run syntax check via extracting module? Could use node --check? HTML. Extract between script tags maybe. But import path and browser APIs. Node --check can parse. Use sed? We can use `node --check` on extracted file. Not create weird. Use bash perl extraction. Let's do and also grep banned APIs.
+dsh: reasoning:
+Syntax check no output = okay. Need capture script. Could create `scripts/capture_forest3.mjs`. Requirements exact puppeteer args. Let's write. Include console/pageerror and screenshot each. Use `waitForFunction`. Browser launch with headless true and args. viewport. goto file url. evaluate renderFrame. screenshot. Add maybe wait 100ms? Since render synchronous. Screenshot after evaluate should capture. No need wait but add `await new Promise(r=>setTimeout(r,100))` in Node not page, okay. Use screenshot path. Need ensure relative path from process.cwd. We'll run from root.
+
+Let's write.
+dsh: reasoning:
+No page errors, good. Need inspect images.
+dsh: reasoning:
+Screenshots good, scene recognizable. But issues:
+- Sun not visible in shot A: sky top uniform light blue-gray, sun glow maybe out of frame? It appears maybe upper left haze? Actually top left slight bright but not disk. Need "太阳天" maybe sun should be visible; could improve. Weather changes clearly (sunny, cloudy, foggy). Maybe "太阳天云雾等场景可以变换" satisfied by transitions though sun disk missing.
+- Meadow looks great, sunflowers and grasses. Tree animals: owl left and squirrel right clearly visible. Rabbit on stump right visible. Butterflies and bees visible. Cabin good.
+- Foreground grass is extremely tall and may obscure some flowers but okay. Shot A is vivid. Shot B perhaps a bit dark green but fine. Shot C foggy but recognizable. Good.
+- Some sky is flat and very light; sun not visible. We can adjust sun direction to be in frame and maybe warm glow. Since sky top uniform, sun may be hidden behind cloud? At t=0.5 sunGlow .95. But no visible sun because shader sphere direction local normalized position; camera inside but sky position = camera, direction to sun from camera into sky equals local position direction? Actually sphere is centered at camera, and sunDir world direction. Vertex vDir = normalize(position) in local. Since sky isn't rotated, local=world offset. Correct. SunDir normalized(-.16,.34,-.93). Camera looks at (0.05,3.03,-6.45) from (0,3.58,15.55) => forward (0.05-0, 3.03-3.58, -22) normalize = (0.002, -0.025, -0.9997). Sun direction angle horizontal atan(0.16/0.93)=9.77° left; vertical 19.9° up. Camera vertical FOV 52° half 26, with look down -1.4°, sun at +19.9 means 21.3° above center => screen y around 480 - (21.3/26)*480 = 87 px. x: horizontal half FOV = atan(tan26 * .5625) =15.35°, sun -9.7 => x=270- (9.7/15.35)*270 =99. So sun center around (99,87). Screenshot top left is light blue, maybe sun disk obscured because shader pow1200 with actual dot maybe underflows? Let's compute direction of pixel? Maybe sun is behind? It might be too small (pow 1200 -> angular radius sqrt(2*ln2/1200)=0.034 rad=2°, ~74px? Actually half-width angle where intensity half at θ = sqrt(ln2/1200)=0.024 rad=1.38°, diameter 2.8° => 50px. Should show. But source color and tone mapping might blow it to white and sky slightly. Maybe look at screenshot top left: it is slightly warmer? Hmm. Perhaps sun is behind vignette? no.
+
+Wait shader sky uses `#include <colorspace_fragment>` and `#include <tonemapping_fragment>`, but `gl_FragColor` might get interpreted. The sky gradient at top is white-ish (#dff0f4 bottom -> #4b9bdc top) but output seems grayish blue. Sun could be outside due sphere `position` geometry coordinate direction; sphere segments 32,20, vDir at vertices then interpolated. At t=0.5, maybe sun between vertex directions and pow1200 only evaluated per fragment, interpolation should fine. Yet sun not obvious. Could be sun behind camera? no.
+
+Maybe `sky.position.copy(camera.position)` but sky geometry radius 170. local position direction to upper-left has z negative. fine.
+
+Possibility: The sunDir is normalized in JS once, but uniforms copy Vector3. Good.
+
+Could make sun more visible and warm with a sprite at exact world position along sunDir around sky, plus less intense shader. E.g. a sprite at camera.position + sunDir*150 each frame, scale 16, additive. At screenshot A, clear sun. In cloudy/mist it fades. This ensures visible. Could add a `sunSprite` with glow texture and maybe disk. However glow texture yellow centered and transparent. Place behind clouds? Sprites order uses depth buffer; sky depthWrite false, sun sprite z depth at 150 far, cloud at z-35 nearer depth. So clouds occlude if depthTest true. Good. Use additive and opacity weather.sun. Sprite always faces camera. Scale maybe 12. At 150 distance angular 4.6°, 85px including glow. Sun disk core maybe 1/3. Use texGlow, opacity .9. But our texGlow has yellow gradient; nice.
+
+Need camera composition maybe sun overlapping tree? Sun at x around -? Place at camera + dir*160 gives x=-25,y=58,z=-133. Project to screen x 99,y? yes. It's high left, above trees. Good. Add sprite with `depthWrite:false`, `depthTest:true`, fog:false, blending Additive. Since sky is at radius 170, sun at 160 in front of sky? Sky mesh depthWrite false but depthTest true; sun drawn after? Rendering order sky first? Sky mesh opaque, sun sprite transparent rendered after, depth test: sky depth isn't written, so pass. Good. Clouds sprites transparent sorted by distance; sun at far and clouds nearer, will be drawn? Transparent sorting back-to-front: sun at 150 far drawn before clouds, clouds overlay. Great.
+- Need update position in updateCamera or renderFrame.
+- At t=.5 show bright sun. At t=4 opacity maybe .08 (cloud). At 8 zero.
+- Could use two sprites: halo and core. Add group? Sprite with glow texture enough. Maybe scale 18.
+- We might also add `sunDisc` sprite with separate glow? Use same texture but scaling 7? Hmm one glow texture center bright. At additive, enough.
+- Need be careful not duplicate shader sun causing double. Keep shader subtle.
+
+Other improvements:
+- Foreground grass blades are very tall, reaching above cabin windows in lower half. In shot A, huge blades obscure bottom of cabin and flowers, but looks like a lush meadow. Fine.
+- The squirrel looks like an orange blob but has tail and body, visible. Maybe slightly more detail? It's recognizable at 480. Owl excellent.
+- Rabbit appears light gray, maybe not obviously rabbit due ears visible. yes ears at right? In screenshot, rabbit sitting, long ears visible maybe.
+- Weather changes strongly. Shot C low fog rendered as horizontal pale bands at door level, good.
+- No butterfly clear in shot A? There are pink butterflies at left middle around x~125,y~670. yes. Bees at x132 y676 and x287 y705 (orange stripes). Good.
+- Shot B has big orange butterfly at center bottom. Shot C has pink at left.
+- Sunflowers field looks full. Weeds low? Actually tall grass. "低矮的一些杂草" our grass is tall (some 1m), perhaps too tall. Should be low weeds, but sunflowers are 1.2-1.8 and grass 0.5-1.0. Could reduce grass height a bit (especially foreground). The grass dominates lower half, maybe okay. But user asked low weeds, and "空地" filled with sunflowers and low weeds. Our grass is waist-high-ish but visually tall due proximity. Could reduce height of grass near camera to avoid blades covering the scene? But looks nice and rich. Maybe tone down a bit. More important: shot A weather sun; sky flat, hard to tell sunny except bright. Adding sun will nail.
+
+Also maybe add sunbeams? no.
+
+Need check screenshot quality not all black/white. yes.
+
+Need maybe inspect pixel min/max to quantify. Could do ImageMagick? not needed but maybe ensure. We can use python PIL maybe. Check average. Later.
+
+Need fix branches positions and owl/squirrel. In shot, owl appears sitting above branch maybe slightly float? The branch is visible and owl appears on it. Fine. Squirrel appears maybe floating slightly above branch? It sits on branch. Fine.
+- The owl tree trunk is at x=-5.35,z-4.1, mostly behind left canopy. branch appears. Good.
+- Squirrel branch right from tree, good.
+- Tree canopy appears a bit low/round and hides much of cabin? Not too. Cabin top roof sits in front of foliage.
+- Shot A shows two front windows, door. Good.
+
+Could improve sky colors: shot A sky very pale; horizon pale, top blue-gray. It looks overcast rather than sunny. Because topColor #4b9bdc but ACES+colorspace yields maybe pale. Top of screenshot at 0? We see gray-blue. Maybe tone mapping lowers saturation. Could increase sky top saturation (0x2f86ce) and bottom 0xcfeaf2; sun warm. But shot A is already distinct from B/C: A has blue sky light, B gray, C fog. Could make A more golden late afternoon, sun visible.
+
+Maybe set sun light warm intensity and sky top #3d8fd6. Also currently sun light from (-13,19,12), so front-left. Shadows cast to right/back. fine.
+
+Need add sun sprite. Also animate sun position with camera. Add after sky. Let's patch.
+
+Also fix cow? no.
+
+Potential requirement "在太阳天云雾等场景可以变换" could imply an interactive toggle? "可以变换" probably animation over t. We have time-based cycle. Good. Maybe add keyboard? Not necessary. But perhaps user expects scene can switch. We can optionally support `?weather=sun/cloud/mist`? Not required and could break pure? No. But maybe add key presses 1/2/3 while retaining renderFrame pure? That would break if state changes. Avoid.
+
+Could add cycle starting sun at t0.5, cloud t4, mist t8. Perfect for screenshots.
+
+Need ensure sun sprite is driven by t and pure. Yes.
+
+Let's add:
+```
+const sunSprite = new THREE.Sprite(new SpriteMaterial({map:texGlow, color:0xfff1c4, blending:AdditiveBlending, transparent:true, depthWrite:false, fog:false, opacity:.9}));
+sunSprite.scale.set(18,18,1);
+scene.add(sunSprite);
+const sunDirWorld = new THREE.Vector3(-.16,.34,-.93).normalize();
+...
+updateWeather set opacity = .95*sun + .05*cloud
+...
+updateCamera sunSprite.position.copy(camera.position).addScaledVector(sunDirWorld, 150)
+```
+Order: create sunDirWorld before skyMat use maybe. Currently skyMat uses vector inline. We can define separately. For minimal patch, add const after sky. update in updateWeather or updateCamera. Sprite position must update every render. Add in updateCamera. Need scale maybe 20. Opacity set in updateWeather, which runs before updateCamera. Fine.
+
+But the sun in shader might be double; opacity small. Could reduce shader sunGlow value from .95 to .55 and sprite does rest. Let's set shader glow .75*sun etc. Sun sprite opacity .8*sun + .03*cloud maybe. At t4 .03, nearly hidden. At t8 0. Good.
+
+Need maybe color sun sprite stronger; map is orange-yellow. Use material color 0xfff2ca and additive. 20 world at dist 150 => angular 7.6°, 140px, big glow; core maybe 30px. The glow texture core 0.2 radius => 28px, good. Halo large. Fine.
+
+Could add rays? no.
+
+Also bring sun slightly more central? x -0.16 => screen x ~100. Nice composition top-left. y .34 => 87. Good.
+
+Let's implement.
+dsh: reasoning:
+Patch weather sky sunGlow and sprite opacity.
+dsh: reasoning:
+Need maybe adjust sun sprite not fogged, set renderOrder? It will sort. With additive, ordering not huge. Good.
+
+Now maybe lower grass a bit? Let's inspect first screenshot more. It's charming. The grass blades are tall and thick. User said low weeds; perhaps reduce weeds scale. It might improve visibility of sunflowers and path. Currently lower 35% dominated by blades. There are sunflowers lower. But whole foreground is lush. Could reduce grass height by 20%: geometry h range .25-.56, scale y rr(.8,1.7). resulting max .95. Actually tall enough. Since camera at y3.6, grass at z6 (dist9.5) height .8 appears from ground to maybe y0.8; screen y around 730. shots show blades reaching up to y~520 (cabin windows), meaning some pretty tall maybe due near z 8, dist 7.5 and scale 1.7*0.56=0.95, angle up from camera? At y0.95 vs 3.6 dy -2.65, distance 7.5 angle -19.5°, screen y = 480+ (19.5-1.4)/26*480=815, not 520. Hmm the blades at screen y 520 maybe are z~2 (dist13.5) height1? angle -11, screen 650. Wait screenshot grass covers 600-900, maybe largely. Looking at image, blades start at ground and tips around y720? Actually image lower third green, tall blades up to 670. Fine.
+
+Maybe we should add visible sun disk then recapture.
+
+But note we already used 1 capture round. Constraint max 3 iterations. We can modify and recapture; that's iteration 2. Fine.
+
+Need maybe fix sun visible. Run capture again.
+dsh: reasoning:
+Command failed due process substitution. Need not syntax check with node --check pipe; use temp file. We must investigate but easy. Do separate.
+dsh: reasoning:
+Sun now giant white disk. It's visible but maybe too big and washed-out; no warm yellow. Could improve to a golden sun with smaller core and warm halo. The glow texture got tone mapped? Sprite colors probably tone mapped and additive saturate to white. Could reduce scale to 12 and opacity .65, use color 0xffd27a. The sun looks like a big moon, maybe okay but not "sunny". Better smaller and golden. Need maybe adjust. Also sky still flat pale. Could add warm horizon gradient. But scene great.
+
+We have 2 iterations? First original, second sun. Max 3 rounds. We can do one more refinement to improve sun and maybe scene details. Need not overdo. Also note screenshot A has oval sun halo 150x150 white. Looks like bright sun in hazy sky. Acceptable, but somewhat moon-like due white. Make golden center can be challenging additive with ACES. Use normal blending? Sprite with glow texture in normal blending and opacity .9 would show yellow. Additive saturates. Use `blending: THREE.NormalBlending` with color 0xffd987 maybe, opacity .9. But transparent over sky will tint. Could layer: a larger additive halo lower opacity and a solid warm disc. Or use a separate circle mesh? Sprite with normal blending.
+
+Let's think of sun rendering. The glow texture: center rgba(255,242,190,1), 0.22 rgba(255,220,120,.95), 0.55 rgba(255,185,70,.3). With additive, center adds 1 to sky (already ~0.8) -> white, and tone mapping clamps. So center white. If normal blending, center becomes cream #fff2be, edges golden alpha. That would look yellow. But normal blending sprite with depthWrite false and transparent; sky behind, so it will overlay. Set opacity .9, color 0xffe0a0 (multiplies texture). Center around #ffe3a3, warm. Good. Scale 16. Add an additive secondary halo maybe not necessary. Could set blending Normal. At t4 opacity 0.02, t8 0. Good. Let's do normal blending with color 0xffe6ae, scale 16, opacity 0.92. The glow texture edges with alpha 0.3 become golden tint. Nice.
+But sprite at z 150, scene fog false. Good.
+Alternatively add `sunSprite.material.toneMapped = false` to preserve color. SpriteMaterial has toneMapped property. Set toneMapped:false. Then warm cream. Add for sky? shader tone mapped. Sprite rendered after with no tone map. Could be too bright but good. Use opacity .92.
+
+Need maybe add sun rays. no.
+
+Also cabin looks too dark under sun? It is cozy. Sun from front-left but wall front dark brown. Could brighten front wall via material color 0xd9b58c already. It's dark because texture * color and ACES. Maybe okay. In shot A, cabin is clear. Windows warm.
+
+Potential issue "树上有一些小动物" clearly owl and squirrel. Great.
+"小屋前方有一块空地里种满了向日葵和低矮的一些杂草" yes.
+"有蝴蝶和蜜蜂" yes.
+"在太阳天云雾等场景可以变换" yes.
+
+We should maybe check pure determinism: call renderFrame(4) twice and compare screenshots maybe hashes. Need verify. We can add test script? Use same page render function and screenshot two times at same t compare pixel hash. Could use Node crypto. Let's verify after final. Because pure function should be same even if state from previous t; update functions set all state. Potential accumulations:
+- `camera.lookAt` okay.
+- Plants head.lookAt and rotateZ, fully set.
+- Animals rotation set.
+- Clouds positions set.
+- Weather color copies.
+- Fireflies positions set.
+- Smoke.
+- `hemi.groundColor.setHex(...).lerp(...)` set each.
+- `scene.background.copy` each.
+- `renderer.toneMappingExposure`.
+- Window emissive.
+- Flower group rotations set.
+- Butterflies rotations set.
+All good. Need verify renders identical for same t when called after different times. Some subtle state like `sunLight.target` static.
+- `head.lookAt` uses current head world matrix. Group rotation updates; matrixWorld may not have updated until render. getWorldPosition not used, lookAt uses parent.matrixWorld which may be stale from previous frame? Let's examine Object3D.lookAt:
+```
+this.updateWorldMatrix(true, false);
+const position = _position.setFromMatrixPosition(this.matrixWorld);
+if (this.isCamera || this.isLight) _m1.lookAt(position,target,up); else _m1.lookAt(target,position,up);
+this.quaternion.setFromRotationMatrix(_m1);
+if (parent) { _m1.extractRotation(parent.matrixWorld); _q1.setFromRotationMatrix(_m1); this.quaternion.premultiply(_q1.invert());}
+```
+It calls updateWorldMatrix(true,false), which updates parent chain. So deterministic. Good.
+- Rabbit ear rotations set.
+- smoke.
+- cloud positions set.
+- sunSprite position after weather.
+All good.
+
+Need maybe luminance average and not black/white. We can use Python PIL to check unique. Also compare repeat t=4 after t=0.5/8. We'll do after final.
+
+One more improvement: sun. Also maybe enhance blue sky at top for sunny. Current sky top nearly white-blue at very top? Screenshot A top vertical gradient from pale at top to gray at horizon. Actually top-left near sun is pale. The upper right is light blue #b6d0d8, not strong blue. With sun normal blend, okay. Maybe set exposure and top color stronger. Could change C.sunTop from 0x4b9bdc to 0x2f86cf, bottom 0xcfeaf3. In screenshot top sky appears #b6ced7; likely due ACES. Darken top to #2e7fc4 yields more saturated blue. That would make sunny distinct. Do it.
+- Also sun light warm.
+- Cloudy sky remains gray.
+- Mist white.
+
+Potential overcast screenshot B: nice moody, still cabin. Shot C fog. Good.
+
+Let's adjust sun sprite and sky top. Also maybe reduce sun size. Patch.
+dsh: reasoning:
+Need recapture third round. Do it.
+dsh: reasoning:
+Sun now golden with soft halo, good. Sky still pale but sunny distinct. Scene acceptable. Need now verify determinism and not black/white. Also maybe note screenshots have all relevant elements. Could test renderFrame(4) after different calls yields identical. Write temporary Node script or modify capture? Do in page evaluate: set renderFrame(4), screenshot /tmp/det1.png then call 0.5,8,4 screenshot /tmp/det2.png then compare hash. Also evaluate pixel stats via canvas? Screenshot entire page. Use puppeteer. Could use shell sha256sum. Also test that renderFrame is pure with t. Let's create quick script maybe not persistent? Fine. Use node inline with import? Easier cat /tmp/determinism.mjs in workspace? Use bash heredoc to /tmp, but `node /tmp` import puppeteer resolution from /tmp fails. Put script in workspace scripts/verify_forest3.mjs or use node --input-type=module -e. We'll run here-doc via `node --input-type=module` from root. But import puppeteer resolves from cwd? For stdin, base is cwd, yes. Let's run. Also use python PIL for stats if available. Check.
+dsh: reasoning:
+Determinism verified. PIL unavailable; can use ImageMagick identify/convert? Check. Or use node pngjs maybe dependency? Puppeteer has no image stats. Could use ffmpeg? `ffmpeg -i ... -vf signalstats` maybe. Or just visual. Requirement check not all black/white visually done. But quantify with `convert` or `ffprobe`? Let's check tools.
+dsh: reasoning:
+No image tools. Could use pngjs maybe trans dep? `require.resolve('pngjs')` maybe not. Could use playwright? Not needed. Could implement simple PNG pixel stats with Node zlib and PNG decoder ourselves; not necessary but can check average without library. We can decode PNG manually: parse IHDR, concatenate IDAT, inflate, apply filters, compute. That's doable ~50 lines. But visual clearly not black/white. Yet we need "检查这三张截图：不能全黑、不能全白" — we can report based visual. But could automate stats to be robust. Let's write a small Node PNG decoder or check if sharp exists.
+dsh: reasoning:
+Can implement simple. Let's do for confidence. Use Node zlib, parse IHDR, inflate IDAT, unfilter RGB. Compute mean, min, max, percent dark/light, color variance. This also verifies not all black/white. Do quick script.
+dsh: reasoning:
+Good, not black/white. Need maybe clean temporary verification script? User didn't ask, but leave `scripts/capture_forest3.mjs` useful. Remove `_verify_forest3.mjs` because temporary. Also maybe /tmp irrelevant. Remove via bash rm. Need verify absolute path before delete per instructions. Path /home/runner/work/111/111/scripts/_verify_forest3.mjs. Use rm. Also maybe agent_log? No. Need maybe git status. Use git diff? We created scenes/forest3.html, scripts/capture, agent_out shots. Check status.
+dsh: reasoning:
+agent_log modified by harness? Not our concern. package-lock untracked? existed, but status ?? package-lock maybe .gitignore? weird initial file existed but not tracked. Fine.
+
+Need maybe inspect final file for any issues:
+- `owlHeadParts` and `headParts` unused. Could clean but no impact.
+- `leafGeo.scale` no-op. fine.
+- `sunSprite` not set renderOrder; transparent sprite at z150 behind clouds. Fine.
+- `matShutter` declared before function. good.
+- source no Math.random etc. verify. 
+- Is `window.renderFrame` pure truly? yes determinism compared.
+- all animations from t. There is no requestAnimationFrame. Yes.
+- maybe initialized geometry using rng, deterministic. Good.
+- `lastT` global, only resize uses. That's okay. `renderFrame` pure output independent of previous calls verified.
+- screenshot script has exact args and viewport 540x960. yes.
+- import path exact. yes.
+
+Could maybe check frames t 0.5/4/8 weather values and scene. already.
+Need final report Chinese: what wrote, what saw in screenshots, what's missing. Mention file and screenshot paths. "还差什么" probably shortcomings: e.g., procedural low-poly style, animals simplified; no interactivity? But requirement only? Could mention areas for polish: animal faces simplified, no audio, not physically realistic, weather sequence 20s loop, haze maybe washes distant trees. Keep honest.
+Need perhaps mention testing: module syntax pass, no pageerror, deterministic screenshot hash identical for repeated t=4, stats not black/white. Good.
+Need mention weather cycle schedule: 0-2 sunny, 2-4 clouds, 6-8 mist, etc. At t=0.5 sun visible, 4 cloudy, 8 foggy.
+Need be detailed but concise. User asked "帮我用THREEJS制作..." so final report in Chinese.
+
+Before final, should update todo statuses.
+dsh: reasoning:
+Need final answer. Include what wrote, screenshots content, missing. Mention 3 iterations? We did 3 capture rounds (initial, sun addition, sun refinement) within max 3. Good. Mention screenshot paths. Maybe mention pixel stats means. Need not overdo. Could include links to local files? Markdown links to relative paths maybe not clickable? We can cite `scenes/forest3.html` in code. Provide bullet list.
+
+Let's formulate in Chinese:
+
+已完成：
+- `scenes/forest3.html` 单文件 `<script type="module">`, three from `../node_modules/three/build/three.module.js`.
+- contract `window.__ready=true`, `window.renderFrame(t)`.
+- Deterministic: seeded mulberry32 only init, no Math.random/Date.now/performance.now; all animation from t; repeated t=4 hash identical.
+- Scene content: low-poly forest, log cabin with warm windows/door/porch/chimney smoke/stone path; tree owl and squirrel, roof bluebird, stump rabbit; 66 sunflowers, 2600 grass instances + 550 taller weeds + wildflowers, butterflies/bees/fireflies; 20s weather loop: sun/cloud/fog; sun disk, clouds, ground mist, fog and light/color transitions.
+- renderer 540x960 capture via puppeteer flags exact. screenshots.
+- validation: three images mean brightness 110/96/120, dark pixels 5.5/6/0.5%, light 0.08/0.17/0.07%, not black/white, recognizable.
+
+What saw:
+A sunny: golden sun upper left, blue sky, clear cabin, owl, squirrel, rabbit, dense flowers and bugs.
+B cloudy: gray sky, diffused light, window warm contrast, same elements, dense meadow.
+C fog: pale fog, low mist, background trees fade, cabin and foreground still readable, fireflies.
+
+Still lacking:
+- low-poly simplified, animals/cabin details stylized not photoreal; sunflowers billboard textures have flat feel at oblique angles; fog at t=8 can slightly wash out background (but cabin clear); weather cycle loops every 20s, no manual UI toggle (if user wanted interactive switch). If needed can add button/keys. But requirement says "可以变换" time-driven; we have. Mention optional.
+- Might mention only 3 times captured, animation not rendered as video.
+
+Need maybe not call it "还差" too negative.
+已完成，文件与截图都在工作区中。
+
+## 写了什么
+
+**`scenes/forest3.html`**（单文件）
+
+- 使用 `<script type="module">`，并严格从 `../node_modules/three/build/three.module.js` 引入 three。
+- 暴露 `window.__ready = true` 与 `window.renderFrame(t)`。
+- 所有动画由 `t` 驱动；初始化只用固定种子的 `mulberry32`，没有 `Math.random`、`Date.now`、`performance.now`。
+- 场景内容：
+  - 低多边形森林、原木小屋、发光窗户、门廊、烟囱炊烟、石板小径；
+  - 左侧树上的猫头鹰、右侧树上的松鼠、屋顶蓝鸟、树桩上的兔子；
+  - 小屋前方 66 株向日葵、2600 丛草、550 丛较高的杂草和野花点缀；
+  - 蝴蝶、蜜蜂，以及雾天出现的萤火虫；
+  - 20 秒天气循环：太阳 → 阴云 → 雾，天空颜色、太阳光晕、云层、地面低雾、雾浓度、窗灯和整体曝光同步变化。
+
+Puppeteer 截图脚本：`scripts/capture_forest3.mjs`  
+截图文件：
+
+- `agent_out/shot_a.png` — `renderFrame(0.5)`
+- `agent_out/shot_b.png` — `renderFrame(4)`
+- `agent_out/shot_c.png` — `renderFrame(8)`
+
+## 截图里看到了什么
+
+- **shot_a（0.5s，晴天）**：左上方有金色太阳光晕，蓝天，小屋清晰；猫头鹰、松鼠、兔子都能辨认，前景向日葵、草丛、蝴蝶和蜜蜂完整。
+- **shot_b（4s，阴天）**：天空转为灰蓝，光线变柔和，小屋窗户和门灯的暖光更突出；森林和小径仍然清楚。
+- **shot_c（8s，雾天）**：背景树木被雾吞没，门廊附近有低雾，小屋和前景向日葵仍可辨认，萤火虫光点出现。
+
+三张图都做过亮度检查：平均亮度约为 110 / 96 / 120，暗像素占比约 5.5% / 6.0% / 0.5%，亮像素占比不到 0.2%，不是全黑或全白。重复调用 `renderFrame(4)` 得到的截图哈希完全一致，确定性通过。
+
+## 还差什么
+
+- 动物和小屋采用简化的低多边形风格，近看细节有限。
+- 向日葵花头是朝向相机的贴图平面，极端侧视角下会显得扁平。
+- 雾天 `t=8` 时远景较淡，这是刻意保留的雾感；如果希望更强调森林层次，可以再调低雾浓度。
+- 目前天气按时间自动循环，没有额外的交互按钮或手动切换 UI；如果需要点击切换晴天/阴天/雾天，可以在现有结构上补一个控制层。
 exit=0
