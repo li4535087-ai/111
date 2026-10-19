@@ -6,11 +6,7 @@ on:
       task:
         description: '交给 dsh 的任务'
         required: true
-        default: 'Create a file named proof.txt containing exactly: dsh-cloud-ok'
-      profile:
-        description: '模式 (headless / tui)'
-        required: false
-        default: 'headless'
+        default: '列出仓库结构'
 
 permissions:
   contents: write
@@ -30,34 +26,35 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install sandbox backend + dsh
+      - name: Install runtime (dsh + puppeteer)
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq bubblewrap
           npm install -g @deepseek-ai/dsh \
             --allow-scripts=@deepseek-ai/dsh-subprocess-local,koffi,node-pty,@google/genai,protobufjs
           dsh --version
-          echo "bwrap: $(which bwrap)"
+          npm install --no-audit --no-fund
+          node -e "console.log('puppeteer ok', require('puppeteer/package.json').version)"
 
       - name: Run agent
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DSH_PERMISSION_MODE: danger-full-access
           TASK: ${{ github.event.inputs.task }}
         run: |
-          mkdir -p agent_out
-          cd agent_out
           set +e
-          timeout 2100 dsh headless "$TASK" > ../agent_log.txt 2>&1
-          echo "exit=$?" >> ../agent_log.txt
+          timeout 2400 dsh headless "$TASK" > agent_log.txt 2>&1
+          echo "exit=$?" >> agent_log.txt
           set -e
-          tail -30 ../agent_log.txt
+          tail -40 agent_log.txt
 
       - name: Show workspace
         if: always()
         run: |
-          echo "=== agent_out ==="
-          find agent_out -maxdepth 3 -type f | head -40
-          du -sh agent_out || true
+          echo "=== new files ==="
+          git status --porcelain | head -40
+          ls -la scenes 2>/dev/null || true
+          ls -la agent_out 2>/dev/null || true
 
       - name: Commit results
         if: always()
@@ -68,7 +65,7 @@ jobs:
           git commit -m "agent: run [skip ci]" || echo "nothing to commit"
           git push || echo "push skipped"
 
-      - name: Upload log
+      - name: Upload log + shots
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -76,4 +73,5 @@ jobs:
           path: |
             agent_log.txt
             agent_out
+            scenes
           if-no-files-found: warn
