@@ -33,6 +33,7 @@ const browser = await puppeteer.launch({
   args: [
     '--no-sandbox',
     '--disable-setuid-sandbox',
+    '--allow-file-access-from-files',
     '--disable-dev-shm-usage',
     '--enable-unsafe-swiftshader',
     '--use-gl=angle',

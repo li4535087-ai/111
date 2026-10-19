@@ -8,15 +8,15 @@ on:
       scene:
         description: '场景文件'
         required: false
-        default: 'scenes/cubist.html'
+        default: 'scenes/t3.html'
       name:
         description: '输出文件名（不含扩展名）'
         required: false
-        default: 'cubist'
+        default: 't3'
       seconds:
         description: '时长（秒）'
         required: false
-        default: '12'
+        default: '1'
       width:
         description: '宽'
         required: false
@@ -42,9 +42,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SCENE: ${{ github.event.inputs.scene || 'scenes/cubist.html' }}
-  NAME: ${{ github.event.inputs.name || 'cubist' }}
-  SECONDS: ${{ github.event.inputs.seconds || '12' }}
+  SCENE: ${{ github.event.inputs.scene || 'scenes/t3.html' }}
+  NAME: ${{ github.event.inputs.name || 't3' }}
+  SECONDS: ${{ github.event.inputs.seconds || '1' }}
   W: ${{ github.event.inputs.width || '540' }}
   H: ${{ github.event.inputs.height || '960' }}
   FPS: ${{ github.event.inputs.fps || '24' }}
