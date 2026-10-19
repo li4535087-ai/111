@@ -1,0 +1,11 @@
+{
+  "name": "codefilm",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "node scripts/render.mjs"
+  },
+  "dependencies": {
+    "puppeteer": "^23.11.1"
+  }
+}

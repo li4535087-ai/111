@@ -1,0 +1,75 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>codefilm / smoke</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden}
+  canvas{display:block;width:100vw;height:100vh}
+</style>
+<canvas id="c"></canvas>
+<script>
+const c = document.getElementById('c');
+const gl = c.getContext('webgl', { preserveDrawingBuffer: true, antialias: false });
+if (!gl) { document.title = 'NO_WEBGL'; }
+
+const VS = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+const FS = `
+precision highp float;
+uniform vec2 uR;
+uniform float uT;
+mat2 rot(float a){ float s=sin(a), c=cos(a); return mat2(c,-s,s,c); }
+void main(){
+  vec2 uv = (gl_FragCoord.xy - 0.5*uR) / uR.y;
+  vec2 p = rot(uT*0.9) * uv;
+  // 旋转方框（屏幕空间 SDF）
+  vec2 q = abs(p);
+  float d = max(q.x, q.y);
+  float frame = smoothstep(0.300, 0.288, d) * smoothstep(0.262, 0.274, d);
+  float glow  = 0.0045 / max(abs(d-0.282), 0.0015);
+  // 中心脉冲
+  float pulse = exp(-length(uv)*7.0) * (0.55 + 0.45*sin(uT*3.0));
+  // 扫描线 + 颗粒
+  float scan = 0.94 + 0.06*sin(gl_FragCoord.y*1.7);
+  vec3 col = vec3(0.30,0.72,1.00) * frame
+           + vec3(0.12,0.42,0.95) * glow * 0.55
+           + vec3(0.95,0.55,0.18) * pulse * 0.9;
+  col += vec3(0.04,0.08,0.16) * exp(-length(uv)*2.2);
+  col *= scan;
+  // 暗角
+  col *= 1.0 - 0.55 * pow(length(uv*0.78), 2.2);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+function sh(type, src) {
+  const o = gl.createShader(type);
+  gl.shaderSource(o, src);
+  gl.compileShader(o);
+  if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o));
+  return o;
+}
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS));
+gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p');
+gl.enableVertexAttribArray(loc);
+gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+
+const uR = gl.getUniformLocation(prog, 'uR');
+const uT = gl.getUniformLocation(prog, 'uT');
+
+window.renderFrame = (t) => {
+  c.width = innerWidth;
+  c.height = innerHeight;
+  gl.viewport(0, 0, c.width, c.height);
+  gl.uniform2f(uR, c.width, c.height);
+  gl.uniform1f(uT, t);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+};
+window.renderFrame(0);
+window.__ready = true;
+</script>

@@ -1,0 +1,81 @@
+name: render
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: '时长（秒）'
+        required: false
+        default: '2'
+      width:
+        description: '宽'
+        required: false
+        default: '640'
+      height:
+        description: '高'
+        required: false
+        default: '360'
+      fps:
+        description: '帧率'
+        required: false
+        default: '24'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: render-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Render frames
+        env:
+          W: ${{ github.event.inputs.width || '640' }}
+          H: ${{ github.event.inputs.height || '360' }}
+          FPS: ${{ github.event.inputs.fps || '24' }}
+          SECONDS: ${{ github.event.inputs.seconds || '2' }}
+        run: node scripts/render.mjs
+
+      - name: Encode video
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+          mkdir -p out
+          ffmpeg -y -hide_banner -loglevel error \
+            -framerate 24 -i frames/%04d.png \
+            -c:v libx264 -crf 18 -preset medium -pix_fmt yuv420p \
+            out/smoke.mp4
+          ls -lh out
+
+      - name: Keep as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-mp4
+          path: out/smoke.mp4
+          if-no-files-found: error
+
+      - name: Commit result back to repo
+        run: |
+          mkdir -p renders
+          cp out/smoke.mp4 renders/smoke.mp4
+          rm -rf frames
+          git config user.name "codefilm-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add renders
+          git commit -m "render: smoke.mp4 [skip ci]" || echo "nothing to commit"
+          git push
