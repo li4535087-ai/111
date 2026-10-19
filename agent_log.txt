@@ -1,0 +1,8 @@
+dsh: reasoning:
+We need need create file proof.txt exactly dsh-cloud-ok. Simple write. But instruction says read existing before overwriting. Need check if exists. Could use bash ls or glob. We can write? The fs observation policy requires read before overwrite. Does file exist? Use glob or ls. Let's check.
+dsh: reasoning:
+Now write exact content. The tool likely writes no newline unless included. "containing exactly: dsh-cloud-ok" means content exactly dsh-cloud-ok likely no trailing newline. Use write with content.
+dsh: reasoning:
+Need verify exact bytes. Use wc -c and maybe od.
+Created `proof.txt` containing exactly `dsh-cloud-ok` (12 bytes, no trailing newline).
+exit=0
