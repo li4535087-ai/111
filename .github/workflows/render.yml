@@ -8,15 +8,15 @@ on:
       scene:
         description: '场景文件'
         required: false
-        default: 'scenes/t3.html'
+        default: 'scenes/forest.html'
       name:
         description: '输出文件名（不含扩展名）'
         required: false
-        default: 't3'
+        default: 'forest'
       seconds:
         description: '时长（秒）'
         required: false
-        default: '1'
+        default: '8'
       width:
         description: '宽'
         required: false
@@ -42,9 +42,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  SCENE: ${{ github.event.inputs.scene || 'scenes/t3.html' }}
-  NAME: ${{ github.event.inputs.name || 't3' }}
-  SECONDS: ${{ github.event.inputs.seconds || '1' }}
+  SCENE: ${{ github.event.inputs.scene || 'scenes/forest.html' }}
+  NAME: ${{ github.event.inputs.name || 'forest' }}
+  SECONDS: ${{ github.event.inputs.seconds || '8' }}
   W: ${{ github.event.inputs.width || '540' }}
   H: ${{ github.event.inputs.height || '960' }}
   FPS: ${{ github.event.inputs.fps || '24' }}

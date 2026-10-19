@@ -1,0 +1,471 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;padding:0;overflow:hidden;background:#8fb3cc}canvas{display:block}</style>
+</head><body>
+<script type="module">
+import * as THREE from '../node_modules/three/build/three.module.js';
+
+/* ---------- 参数 ---------- */
+const q = new URLSearchParams(location.search);
+const FPS = Number(q.get('fps') || 24);
+const SECONDS = Number(q.get('seconds') || 8);
+const SEED = Number(q.get('seed') || 20261019);
+const W = window.innerWidth;
+const H = window.innerHeight;
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+const rng = mulberry32(SEED);
+const rr = (a, b) => a + (b - a) * rng();
+const smooth = (e0, e1, x) => {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+};
+
+/* ---------- 渲染器 ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xc7dbe4, 22, 85);
+
+const cam = new THREE.PerspectiveCamera(48, W / H, 0.1, 400);
+
+/* ---------- 天空穹顶 ---------- */
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: {
+    top: { value: new THREE.Color(0x6aa8d8) },
+    bot: { value: new THREE.Color(0xe8eef0) }
+  },
+  vertexShader: `varying vec3 vp; void main(){ vp = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+  fragmentShader: `uniform vec3 top; uniform vec3 bot; varying vec3 vp;
+    void main(){ float h = clamp(vp.y/70.0 + 0.5, 0.0, 1.0); gl_FragColor = vec4(mix(bot, top, pow(h,0.8)), 1.0); }`,
+  side: THREE.BackSide,
+  depthWrite: false,
+  fog: false
+});
+const sky = new THREE.Mesh(new THREE.SphereGeometry(160, 24, 16), skyMat);
+scene.add(sky);
+
+/* ---------- 光照 ---------- */
+const hemi = new THREE.HemisphereLight(0xcfe3ef, 0x46552c, 0.75);
+scene.add(hemi);
+
+const sun = new THREE.DirectionalLight(0xfff0d2, 2.6);
+sun.position.set(9, 13, 7);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.left = -16;
+sun.shadow.camera.right = 16;
+sun.shadow.camera.top = 16;
+sun.shadow.camera.bottom = -16;
+sun.shadow.camera.near = 1;
+sun.shadow.camera.far = 60;
+sun.shadow.bias = -0.0008;
+sun.shadow.normalBias = 0.02;
+scene.add(sun);
+scene.add(sun.target);
+
+const fill = new THREE.DirectionalLight(0xbcd6e8, 0.28);
+fill.position.set(-8, 6, -6);
+scene.add(fill);
+
+/* ---------- 程序纹理 ---------- */
+function grassTexture(){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#6d8c3f'; g.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 5000; i++){
+    const x = rng() * 256, y = rng() * 256;
+    const gr = 100 + rng() * 60;
+    g.fillStyle = `rgba(${50 + rng() * 30},${gr},${40 + rng() * 30},${0.18 + rng() * 0.3})`;
+    g.fillRect(x, y, 1 + rng() * 2, 1 + rng() * 3);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(10, 10);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function woodTexture(){
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#9a7350'; g.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 9; i++){
+    const y = i * 14;
+    g.fillStyle = 'rgba(70,48,30,0.35)';
+    g.fillRect(0, y, 128, 1.5);
+    g.fillStyle = 'rgba(255,235,200,0.10)';
+    g.fillRect(0, y + 2, 128, 1);
+  }
+  for (let i = 0; i < 320; i++){
+    g.fillStyle = `rgba(60,40,25,${rng() * 0.12})`;
+    g.fillRect(rng() * 128, rng() * 128, rng() * 8, 1);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function flowerTexture(){
+  const S = 256;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.translate(S / 2, S / 2);
+  for (let ring = 0; ring < 2; ring++){
+    const R = ring === 0 ? 96 : 72;
+    const n = ring === 0 ? 20 : 16;
+    for (let i = 0; i < n; i++){
+      g.save();
+      g.rotate((i / n) * Math.PI * 2 + ring * 0.12);
+      g.fillStyle = ring === 0 ? '#f0c33a' : '#f7d85e';
+      g.beginPath();
+      g.ellipse(0, -R * 0.55, R * 0.13, R * 0.36, 0, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = 'rgba(150,105,20,0.35)'; g.lineWidth = 1.6; g.stroke();
+      g.restore();
+    }
+  }
+  g.fillStyle = '#6a4822';
+  g.beginPath(); g.arc(0, 0, 44, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#84592b';
+  for (let i = 0; i < 260; i++){
+    const a = rng() * Math.PI * 2, r = Math.sqrt(rng()) * 42;
+    g.fillRect(Math.cos(a) * r, Math.sin(a) * r, 2.2, 2.2);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+function cloudTexture(){
+  const S = 256;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const g = c.getContext('2d');
+  for (let i = 0; i < 26; i++){
+    const x = S / 2 + (rng() - 0.5) * 140;
+    const y = S / 2 + (rng() - 0.5) * 70;
+    const r = 28 + rng() * 52;
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    grd.addColorStop(0, 'rgba(255,255,255,0.55)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grd;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/* ---------- 地面 ---------- */
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(70, 72),
+  new THREE.MeshStandardMaterial({ map: grassTexture(), color: 0xffffff, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+/* ---------- 小屋 ---------- */
+const cabin = new THREE.Group();
+cabin.position.set(0, 0, -5);
+scene.add(cabin);
+
+const wallTex = woodTexture();
+wallTex.repeat.set(2, 1.4);
+const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.92 });
+
+const body = new THREE.Mesh(new THREE.BoxGeometry(5.4, 3.0, 4.2), wallMat);
+body.position.y = 1.5;
+body.castShadow = true; body.receiveShadow = true;
+cabin.add(body);
+
+const roofMat = new THREE.MeshStandardMaterial({ color: 0x4a3a2c, roughness: 0.95 });
+const roof = new THREE.Mesh(new THREE.ConeGeometry(4.6, 2.0, 4), roofMat);
+roof.position.y = 4.0;
+roof.rotation.y = Math.PI / 4;
+roof.scale.set(1.0, 1.0, 0.82);
+roof.castShadow = true; roof.receiveShadow = true;
+cabin.add(roof);
+
+const doorMat = new THREE.MeshStandardMaterial({ color: 0x5c3f28, roughness: 0.85 });
+const door = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.95, 0.12), doorMat);
+door.position.set(-0.6, 0.98, 2.14);
+door.castShadow = true;
+cabin.add(door);
+
+const knob = new THREE.Mesh(
+  new THREE.SphereGeometry(0.055, 12, 10),
+  new THREE.MeshStandardMaterial({ color: 0xd8b26a, roughness: 0.35, metalness: 0.7 })
+);
+knob.position.set(-0.22, 1.0, 2.22);
+cabin.add(knob);
+
+const winMat = new THREE.MeshStandardMaterial({
+  color: 0xffdca8, emissive: 0xffb85c, emissiveIntensity: 1.15, roughness: 0.4
+});
+const win = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.95, 0.1), winMat);
+win.position.set(1.45, 1.85, 2.13);
+cabin.add(win);
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x35281c, roughness: 0.8 });
+const frameH = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.09, 0.14), frameMat);
+frameH.position.set(1.45, 1.85, 2.14);
+cabin.add(frameH);
+const frameV = new THREE.Mesh(new THREE.BoxGeometry(0.09, 1.06, 0.14), frameMat);
+frameV.position.set(1.45, 1.85, 2.14);
+cabin.add(frameV);
+
+const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.7, 0.5), new THREE.MeshStandardMaterial({ color: 0x6b5a4c, roughness: 1 }));
+chimney.position.set(1.5, 4.0, -1.2);
+chimney.castShadow = true;
+cabin.add(chimney);
+
+/* 炊烟 */
+const smokeTex = cloudTexture();
+const smoke = [];
+for (let i = 0; i < 16; i++){
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: smokeTex, transparent: true, opacity: 0.22, depthWrite: false, color: 0xdfe6e8
+  }));
+  s.scale.setScalar(0.7);
+  cabin.add(s);
+  smoke.push(s);
+}
+
+/* ---------- 树 ---------- */
+const trunkMat = new THREE.MeshStandardMaterial({ color: 0x5a4432, roughness: 1 });
+const leafMats = [0x2f5426, 0x3a6330, 0x274a20, 0x436b33].map(
+  c => new THREE.MeshStandardMaterial({ color: c, roughness: 1, flatShading: true })
+);
+function makeTree(x, z, s){
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.16 * s, 0.24 * s, 1.9 * s, 7), trunkMat);
+  trunk.position.y = 0.95 * s;
+  trunk.castShadow = true;
+  g.add(trunk);
+  for (let i = 0; i < 3; i++){
+    const c = new THREE.Mesh(
+      new THREE.ConeGeometry((1.55 - i * 0.34) * s, 1.7 * s, 8),
+      leafMats[(i + Math.floor(rng() * 4)) % 4]
+    );
+    c.position.y = (1.85 + i * 0.95) * s;
+    c.castShadow = true;
+    c.receiveShadow = true;
+    g.add(c);
+  }
+  g.position.set(x, 0, z);
+  g.rotation.y = rng() * Math.PI;
+  return g;
+}
+const treeSpots = [
+  [-14, -22, 1.5], [-9, -26, 1.8], [-3, -30, 1.6], [3, -31, 1.9], [9, -27, 1.7],
+  [15, -21, 1.5], [-17, -14, 1.4], [17, -13, 1.55], [-19, -4, 1.3], [19, -2, 1.35],
+  [-11, -11, 1.2], [11, -10, 1.25], [-6, -16, 1.1], [6, -17, 1.15]
+];
+treeSpots.forEach(([x, z, s]) => scene.add(makeTree(x, z, s)));
+
+/* ---------- 向日葵 ---------- */
+const stemMat = new THREE.MeshStandardMaterial({ color: 0x4e7a2c, roughness: 1 });
+const fTex = flowerTexture();
+const headMat = new THREE.MeshStandardMaterial({
+  map: fTex, transparent: true, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.85
+});
+const flowers = [];
+for (let i = 0; i < 26; i++){
+  const g = new THREE.Group();
+  const hgt = rr(0.85, 1.45);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.034, hgt, 5), stemMat);
+  stem.position.y = hgt / 2;
+  stem.castShadow = true;
+  g.add(stem);
+  const head = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.46), headMat);
+  head.position.y = hgt;
+  head.castShadow = true;
+  g.add(head);
+  let x, z, ok = false, tries = 0;
+  while (!ok && tries < 60){
+    tries++;
+    x = rr(-7.5, 7.5);
+    z = rr(2.5, 9.5);
+    ok = Math.abs(x) > 0.9 || z > 4.2;
+  }
+  g.position.set(x, 0, z);
+  g.rotation.y = rr(-0.4, 0.4);
+  g.userData = { phase: rng() * 6.28, hgt };
+  scene.add(g);
+  flowers.push(g);
+}
+
+/* ---------- 草丛 ---------- */
+const grassGeo = new THREE.ConeGeometry(0.055, 0.42, 3);
+const grassMat = new THREE.MeshStandardMaterial({ color: 0x537a2e, roughness: 1, flatShading: true });
+const grass = new THREE.InstancedMesh(grassGeo, grassMat, 420);
+const dummy = new THREE.Object3D();
+for (let i = 0; i < 420; i++){
+  const a = rng() * Math.PI * 2, r = 3 + Math.sqrt(rng()) * 17;
+  dummy.position.set(Math.cos(a) * r, 0.21, Math.sin(a) * r);
+  dummy.rotation.set(rr(-0.16, 0.16), rng() * 6.28, rr(-0.16, 0.16));
+  dummy.scale.setScalar(rr(0.7, 1.5));
+  dummy.updateMatrix();
+  grass.setMatrixAt(i, dummy.matrix);
+}
+grass.castShadow = false;
+grass.receiveShadow = true;
+scene.add(grass);
+
+/* ---------- 蝴蝶 ---------- */
+const bflyWingGeo = new THREE.PlaneGeometry(0.11, 0.15);
+const butterflies = [];
+for (let i = 0; i < 7; i++){
+  const g = new THREE.Group();
+  const col = [0xf2c14e, 0xe8834a, 0xd9d2c0, 0xe9b8c8][i % 4];
+  const wm = new THREE.MeshStandardMaterial({ color: col, side: THREE.DoubleSide, roughness: 0.7, emissive: col, emissiveIntensity: 0.12 });
+  const l = new THREE.Mesh(bflyWingGeo, wm);
+  const r = new THREE.Mesh(bflyWingGeo, wm);
+  l.position.x = -0.052; r.position.x = 0.052;
+  g.add(l, r);
+  scene.add(g);
+  butterflies.push({ g, l, r, phase: rng() * 6.28, rad: rr(1.6, 4.2), sp: rr(0.35, 0.7), h: rr(0.9, 2.1), cx: rr(-4, 4), cz: rr(3, 8) });
+}
+
+/* ---------- 蜜蜂 ---------- */
+const beeBodyMat = new THREE.MeshStandardMaterial({ color: 0xe0b23a, roughness: 0.5, metalness: 0.1 });
+const bees = [];
+for (let i = 0; i < 6; i++){
+  const g = new THREE.Group();
+  const b = new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), beeBodyMat);
+  g.add(b);
+  scene.add(g);
+  bees.push({ g, phase: rng() * 6.28, rad: rr(0.8, 2.6), sp: rr(1.1, 2.0), h: rr(0.8, 1.6), cx: rr(-4, 4), cz: rr(3.5, 8) });
+}
+
+/* ---------- 云 ---------- */
+const cloudTex = cloudTexture();
+const clouds = [];
+for (let i = 0; i < 12; i++){
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({
+    map: cloudTex, transparent: true, opacity: 0.2, depthWrite: false, fog: false
+  }));
+  s.position.set(rr(-60, 60), rr(18, 30), rr(-70, -20));
+  s.scale.set(rr(26, 46), rr(11, 19), 1);
+  scene.add(s);
+  clouds.push(s);
+}
+
+/* ---------- 天气 ---------- */
+const SUN_TOP = new THREE.Color(0x6aa8d8), SUN_BOT = new THREE.Color(0xe9eff1);
+const CLD_TOP = new THREE.Color(0x8d9aa4), CLD_BOT = new THREE.Color(0xd5dade);
+const FOG_TOP = new THREE.Color(0xa8b4bc), FOG_BOT = new THREE.Color(0xdde3e4);
+
+const cTmp = new THREE.Color();
+function applyWeather(t){
+  const T = SECONDS;
+  const toCloud = smooth(T * 0.10, T * 0.42, t);
+  const toFog = smooth(T * 0.48, T * 0.82, t);
+
+  sun.intensity = 2.6 - 1.55 * toCloud - 0.55 * toFog;
+  hemi.intensity = 0.75 + 0.25 * toCloud + 0.05 * toFog;
+  fill.intensity = 0.28 + 0.1 * toCloud;
+
+  scene.fog.near = 22 - 10 * toCloud - 7 * toFog;
+  scene.fog.far = 85 - 28 * toCloud - 30 * toFog;
+
+  skyMat.uniforms.top.value.copy(SUN_TOP).lerp(CLD_TOP, toCloud).lerp(FOG_TOP, toFog);
+  skyMat.uniforms.bot.value.copy(SUN_BOT).lerp(CLD_BOT, toCloud).lerp(FOG_BOT, toFog);
+
+  const cBase = 0xc7dbe4;
+  cTmp.setHex(cBase).lerp(new THREE.Color(0xd7dcdd), toFog);
+  scene.fog.color.copy(cTmp);
+
+  for (let i = 0; i < clouds.length; i++){
+    clouds[i].material.opacity = 0.16 + 0.55 * toCloud + 0.2 * toFog;
+  }
+  renderer.toneMappingExposure = 1.0 - 0.12 * toCloud + 0.04 * toFog;
+  return { toCloud, toFog };
+}
+
+/* ---------- 每帧 ---------- */
+window.renderFrame = (t) => {
+  applyWeather(t);
+  const T = SECONDS;
+
+  /* 镜头：缓慢推进 + 轻微环绕 */
+  const k = t / T;
+  const ang = -0.28 + 0.22 * Math.sin(k * Math.PI * 1.15);
+  const rad = 14.5 - 2.6 * smooth(0, 1, k);
+  const hgt = 4.6 - 1.1 * smooth(0, 1, k);
+  cam.position.set(Math.sin(ang) * rad, hgt, Math.cos(ang) * rad - 2.0);
+  cam.lookAt(0, 1.9, -4.2);
+
+  /* 炊烟 */
+  for (let i = 0; i < smoke.length; i++){
+    const life = 3.4;
+    const ph = (t * 1.0 + i * (life / smoke.length)) % life;
+    const p = ph / life;
+    smoke[i].position.set(
+      Math.sin(ph * 1.6 + i) * 0.22 * (1 + p),
+      4.9 + p * 3.1,
+      -1.2 + Math.cos(ph * 1.2 + i) * 0.18
+    );
+    smoke[i].material.opacity = 0.26 * (1 - p) * (0.55 + 0.45 * Math.sin(ph * 2 + i));
+    smoke[i].scale.setScalar(0.55 + p * 1.5);
+  }
+
+  /* 向日葵轻微摆动 + 面向镜头 */
+  for (let i = 0; i < flowers.length; i++){
+    const f = flowers[i];
+    const s = Math.sin(t * 1.1 + f.userData.phase) * 0.05;
+    f.rotation.z = s;
+    const head = f.children[1];
+    head.lookAt(cam.position.x, head.getWorldPosition(new THREE.Vector3()).y + 0.1, cam.position.z);
+  }
+
+  /* 蝴蝶 */
+  for (let i = 0; i < butterflies.length; i++){
+    const b = butterflies[i];
+    const a = b.phase + t * b.sp;
+    const x = b.cx + Math.cos(a) * b.rad;
+    const z = b.cz + Math.sin(a * 1.3) * b.rad * 0.7;
+    const y = b.h + Math.sin(t * 2.2 + b.phase) * 0.22;
+    b.g.position.set(x, y, z);
+    b.g.rotation.y = -a + Math.PI / 2;
+    const flap = Math.sin(t * 13 + b.phase) * 0.85;
+    b.l.rotation.y = flap;
+    b.r.rotation.y = -flap;
+  }
+
+  /* 蜜蜂 */
+  for (let i = 0; i < bees.length; i++){
+    const b = bees[i];
+    const a = b.phase + t * b.sp;
+    b.g.position.set(
+      b.cx + Math.cos(a) * b.rad,
+      b.h + Math.sin(t * 5.5 + b.phase) * 0.09,
+      b.cz + Math.sin(a * 1.7) * b.rad
+    );
+  }
+
+  /* 云漂移 */
+  for (let i = 0; i < clouds.length; i++){
+    clouds[i].position.x += 0; /* 位置由 t 决定，保持确定性 */
+  }
+
+  renderer.render(scene, cam);
+};
+
+window.renderFrame(0);
+window.__ready = true;
+</script>
+</body></html>
